@@ -29,7 +29,7 @@ jobs:
       - name: Run archon
         uses: ./github
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         with:
           model: openrouter/deepseek/deepseek-v3-base:free
