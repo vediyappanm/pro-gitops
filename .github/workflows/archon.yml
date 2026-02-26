@@ -19,9 +19,6 @@ jobs:
       issues: read
       comments: write
     steps:
-      - name: Configure git to skip symlinks
-        run: git config --global core.symlinks false
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
