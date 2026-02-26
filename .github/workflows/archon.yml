@@ -13,7 +13,6 @@ jobs:
       startsWith(github.event.comment.body, '/archon')
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
       pull-requests: read
       issues: read
