@@ -19,11 +19,12 @@ jobs:
       issues: read
       comments: write
     steps:
-      - name: Checkout with retry
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
           token: ${{ github.token }}
+          ref: ${{ github.event.issue.base.ref || github.ref }}
 
       - name: Run archon
         uses: ./github
