@@ -8,6 +8,11 @@ import type { Context as GitHubContext } from "@actions/github/lib/context"
 import type { IssueCommentEvent, PullRequestReviewCommentEvent } from "@octokit/webhooks-types"
 import { createArchonClient } from "@opencode-ai/sdk"
 import { spawn } from "node:child_process"
+import process from "node:process"
+
+if (process.env.GITHUB_WORKSPACE) {
+  process.chdir(process.env.GITHUB_WORKSPACE)
+}
 
 type GitHubAuthor = {
   login: string
