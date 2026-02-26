@@ -20,7 +20,8 @@
       "packages/*",
       "packages/console/*",
       "packages/sdk/js",
-      "packages/slack"
+      "packages/slack",
+      "github"
     ],
     "catalog": {
       "@types/bun": "1.3.9",
