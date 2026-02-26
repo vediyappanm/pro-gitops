@@ -414,6 +414,7 @@ async function getUserPrompt() {
   const context = useContext()
   const payload = context.payload as IssueCommentEvent | PullRequestReviewCommentEvent
   const reviewContext = getReviewCommentContext()
+  const body = payload.comment.body.trim()
 
   let prompt = (() => {
     if (body === "/archon" || body === "/ac") {
