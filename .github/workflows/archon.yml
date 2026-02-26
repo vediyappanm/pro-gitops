@@ -19,6 +19,9 @@ jobs:
       issues: read
       comments: write
     steps:
+      - name: Configure git
+        run: git config --global core.autocrlf false
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
