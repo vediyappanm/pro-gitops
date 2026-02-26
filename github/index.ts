@@ -258,8 +258,8 @@ function createArchon() {
 function assertPayloadKeyword() {
   const payload = useContext().payload as IssueCommentEvent | PullRequestReviewCommentEvent
   const body = payload.comment.body.trim()
-  if (!body.match(/(?:^|\s)(?:\/archon|\/ac)(?=$|\s)/)) {
-    throw new Error("Comments must mention `/archon` or `/ac`")
+  if (!body.match(/(?:^|\s)(?:\/archon|\/ac|\/opencode|\/oc)(?=$|\s)/)) {
+    throw new Error("Comments must mention `/archon`, `/ac`, `/opencode`, or `/oc`")
   }
 }
 
@@ -432,19 +432,19 @@ async function getUserPrompt() {
   const body = payload.comment.body.trim()
 
   let prompt = (() => {
-    if (body === "/archon" || body === "/ac") {
+    if (body === "/archon" || body === "/ac" || body === "/opencode" || body === "/oc") {
       if (reviewContext) {
         return `Review this code change and suggest improvements for the commented lines:\n\nFile: ${reviewContext.file}\nLines: ${reviewContext.line}\n\n${reviewContext.diffHunk}`
       }
       return "Summarize this thread"
     }
-    if (body.includes("/archon") || body.includes("/ac")) {
+    if (body.includes("/archon") || body.includes("/ac") || body.includes("/opencode") || body.includes("/oc")) {
       if (reviewContext) {
         return `${body}\n\nContext: You are reviewing a comment on file "${reviewContext.file}" at line ${reviewContext.line}.\n\nDiff context:\n${reviewContext.diffHunk}`
       }
       return body
     }
-    throw new Error("Comments must mention `/archon` or `/ac`")
+    throw new Error("Comments must mention `/archon`, `/ac`, `/opencode`, or `/oc`")
   })()
 
   // Handle images
