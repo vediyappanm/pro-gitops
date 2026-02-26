@@ -1,9 +1,17 @@
-# Exclude heavy folders from GitHub Action download (git archive)
-packages/ui/ export-ignore
-packages/app/ export-ignore
-packages/web/ export-ignore
-packages/enterprise/ export-ignore
-packages/console/ export-ignore
+# Exclude heavy assets from GitHub Action download (git archive)
+# Keeping package.json and workspace folders so 'bun install' doesn't fail
+packages/ui/src/ export-ignore
+packages/app/src/ export-ignore
+packages/app/public/ export-ignore
+packages/web/src/ export-ignore
+packages/web/public/ export-ignore
+packages/enterprise/src/ export-ignore
+packages/enterprise/public/ export-ignore
+packages/console/src/ export-ignore
+packages/console/public/ export-ignore
+packages/desktop/src/ export-ignore
+packages/desktop/public/ export-ignore
+
 dist/ export-ignore
 .github/ export-ignore
 docs/ export-ignore
