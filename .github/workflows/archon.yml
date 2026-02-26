@@ -8,52 +8,28 @@ on:
 
 jobs:
   archon:
+    if: |
+      contains(github.event.comment.body, ' /archon') ||
+      startsWith(github.event.comment.body, '/archon') ||
+      contains(github.event.comment.body, ' /ac') ||
+      startsWith(github.event.comment.body, '/ac')
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-      comments: write
+      id-token: write
+      contents: write
+      pull-requests: write
+      issues: write
     steps:
-      - name: Check if should run
-        id: check
-        shell: bash
-        run: |
-          COMMENT="${{ github.event.comment.body }}"
-          if [[ "$COMMENT" == *"/archon"* ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "✅ Archon trigger detected"
-          else
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "⏭️ Skipping - no /archon trigger found"
-          fi
-
       - name: Checkout repository
-        if: steps.check.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Post analysis to issue
-        if: steps.check.outputs.should_run == 'true'
-        shell: bash
+      - name: Run archon
+        uses: ./github
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          set -e
-
-          echo "✅ Archon workflow triggered!"
-          echo "Repository: $REPO"
-          echo "Issue: $ISSUE_NUMBER"
-
-          # Post comment to issue
-          curl -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/$REPO/issues/$ISSUE_NUMBER/comments" \
-            -d "{\"body\": \"🤖 **Archon Analysis Active**\n\nWorkflow is running and analyzing your repository!\n\n✅ Status: Ready for code analysis\"}" \
-            -w "\nHTTP Status: %{http_code}\n"
-
-          echo "✅ Comment posted!"
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        with:
+          model: openrouter/deepseek/deepseek-v3-base:free
+          use_github_token: "true"

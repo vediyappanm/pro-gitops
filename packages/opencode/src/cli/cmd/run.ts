@@ -7,7 +7,7 @@ import { Flag } from "../../flag/flag"
 import { bootstrap } from "../bootstrap"
 import { EOL } from "os"
 import { Filesystem } from "../../util/filesystem"
-import { createOpencodeClient, type Message, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
+import { createArchonClient, type Message, type ArchonClient, type ToolPart } from "@opencode-ai/sdk/v2"
 import { Server } from "../../server/server"
 import { Provider } from "../../provider/provider"
 import { Agent } from "../../agent/agent"
@@ -220,7 +220,7 @@ function normalizePath(input?: string) {
 
 export const RunCommand = cmd({
   command: "run [message..]",
-  describe: "run opencode with a message",
+  describe: "run archon with a message",
   builder: (yargs: Argv) => {
     return yargs
       .positional("message", {
@@ -278,7 +278,7 @@ export const RunCommand = cmd({
       })
       .option("attach", {
         type: "string",
-        describe: "attach to a running opencode server (e.g., http://localhost:4096)",
+        describe: "attach to a running archon server (e.g., http://localhost:4096)",
       })
       .option("dir", {
         type: "string",
@@ -373,7 +373,7 @@ export const RunCommand = cmd({
       return message.slice(0, 50) + (message.length > 50 ? "..." : "")
     }
 
-    async function session(sdk: OpencodeClient) {
+    async function session(sdk: ArchonClient) {
       const baseID = args.continue ? (await sdk.session.list()).data?.find((s) => !s.parentID)?.id : args.session
 
       if (baseID && args.fork) {
@@ -388,7 +388,7 @@ export const RunCommand = cmd({
       return result.data?.id
     }
 
-    async function share(sdk: OpencodeClient, sessionID: string) {
+    async function share(sdk: ArchonClient, sessionID: string) {
       const cfg = await sdk.config.get()
       if (!cfg.data) return
       if (cfg.data.share !== "auto" && !Flag.OPENCODE_AUTO_SHARE && !args.share) return
@@ -403,7 +403,7 @@ export const RunCommand = cmd({
       }
     }
 
-    async function execute(sdk: OpencodeClient) {
+    async function execute(sdk: ArchonClient) {
       function tool(part: ToolPart) {
         try {
           if (part.tool === "bash") return bash(props<typeof BashTool>(part))
@@ -542,7 +542,7 @@ export const RunCommand = cmd({
             UI.println(
               UI.Style.TEXT_WARNING_BOLD + "!",
               UI.Style.TEXT_NORMAL +
-                `permission requested: ${permission.permission} (${permission.patterns.join(", ")}); auto-rejecting`,
+              `permission requested: ${permission.permission} (${permission.patterns.join(", ")}); auto-rejecting`,
             )
             await sdk.permission.reply({
               requestID: permission.id,
@@ -609,7 +609,7 @@ export const RunCommand = cmd({
     }
 
     if (args.attach) {
-      const sdk = createOpencodeClient({ baseUrl: args.attach, directory })
+      const sdk = createArchonClient({ baseUrl: args.attach, directory })
       return await execute(sdk)
     }
 
@@ -618,7 +618,7 @@ export const RunCommand = cmd({
         const request = new Request(input, init)
         return Server.App().fetch(request)
       }) as typeof globalThis.fetch
-      const sdk = createOpencodeClient({ baseUrl: "http://opencode.internal", fetch: fetchFn })
+      const sdk = createArchonClient({ baseUrl: "http://archon.internal", fetch: fetchFn })
       await execute(sdk)
     })
   },

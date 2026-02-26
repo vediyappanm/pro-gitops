@@ -7,7 +7,7 @@ import { Rpc } from "@/util/rpc"
 import { upgrade } from "@/cli/upgrade"
 import { Config } from "@/config/config"
 import { GlobalBus } from "@/bus/global"
-import { createOpencodeClient, type Event } from "@opencode-ai/sdk/v2"
+import { createArchonClient, type Event } from "@opencode-ai/sdk/v2"
 import type { BunWebSocketData } from "hono/bun"
 import { Flag } from "@/flag/flag"
 
@@ -56,42 +56,42 @@ const startEventStream = (directory: string) => {
     return Server.App().fetch(request)
   }) as typeof globalThis.fetch
 
-  const sdk = createOpencodeClient({
-    baseUrl: "http://opencode.internal",
+  const sdk = createArchonClient({
+    baseUrl: "http://archon.internal",
     directory,
     fetch: fetchFn,
     signal,
   })
 
-  ;(async () => {
-    while (!signal.aborted) {
-      const events = await Promise.resolve(
-        sdk.event.subscribe(
-          {},
-          {
-            signal,
-          },
-        ),
-      ).catch(() => undefined)
+    ; (async () => {
+      while (!signal.aborted) {
+        const events = await Promise.resolve(
+          sdk.event.subscribe(
+            {},
+            {
+              signal,
+            },
+          ),
+        ).catch(() => undefined)
 
-      if (!events) {
-        await Bun.sleep(250)
-        continue
-      }
+        if (!events) {
+          await Bun.sleep(250)
+          continue
+        }
 
-      for await (const event of events.stream) {
-        Rpc.emit("event", event as Event)
-      }
+        for await (const event of events.stream) {
+          Rpc.emit("event", event as Event)
+        }
 
-      if (!signal.aborted) {
-        await Bun.sleep(250)
+        if (!signal.aborted) {
+          await Bun.sleep(250)
+        }
       }
-    }
-  })().catch((error) => {
-    Log.Default.error("event stream error", {
-      error: error instanceof Error ? error.message : error,
+    })().catch((error) => {
+      Log.Default.error("event stream error", {
+        error: error instanceof Error ? error.message : error,
+      })
     })
-  })
 }
 
 startEventStream(process.cwd())
@@ -126,7 +126,7 @@ export const rpc = {
       directory: input.directory,
       init: InstanceBootstrap,
       fn: async () => {
-        await upgrade().catch(() => {})
+        await upgrade().catch(() => { })
       },
     })
   },

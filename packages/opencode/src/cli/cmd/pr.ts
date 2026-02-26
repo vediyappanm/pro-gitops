@@ -5,7 +5,7 @@ import { $ } from "bun"
 
 export const PrCommand = cmd({
   command: "pr <number>",
-  describe: "fetch and checkout a GitHub PR branch, then run opencode",
+  describe: "fetch and checkout a GitHub PR branch, then run archon",
   builder: (yargs) =>
     yargs.positional("number", {
       type: "number",
@@ -91,20 +91,20 @@ export const PrCommand = cmd({
         UI.println("Starting opencode...")
         UI.println()
 
-        // Launch opencode TUI with session ID if available
+        // Launch archon TUI with session ID if available
         const { spawn } = await import("child_process")
-        const opencodeArgs = sessionId ? ["-s", sessionId] : []
-        const opencodeProcess = spawn("opencode", opencodeArgs, {
+        const archonArgs = sessionId ? ["-s", sessionId] : []
+        const archonProcess = spawn("archon", archonArgs, {
           stdio: "inherit",
           cwd: process.cwd(),
         })
 
         await new Promise<void>((resolve, reject) => {
-          opencodeProcess.on("exit", (code) => {
+          archonProcess.on("exit", (code) => {
             if (code === 0) resolve()
-            else reject(new Error(`opencode exited with code ${code}`))
+            else reject(new Error(`archon exited with code ${code}`))
           })
-          opencodeProcess.on("error", reject)
+          archonProcess.on("error", reject)
         })
       },
     })

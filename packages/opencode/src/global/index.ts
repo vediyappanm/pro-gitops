@@ -4,7 +4,7 @@ import path from "path"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
 
-const app = "opencode"
+const app = "archon"
 
 const data = path.join(xdgData!, app)
 const cache = path.join(xdgCache!, app)
@@ -13,9 +13,8 @@ const state = path.join(xdgState!, app)
 
 export namespace Global {
   export const Path = {
-    // Allow override via OPENCODE_TEST_HOME for test isolation
     get home() {
-      return process.env.OPENCODE_TEST_HOME || os.homedir()
+      return process.env.ARCHON_TEST_HOME || os.homedir()
     },
     data,
     bin: path.join(data, "bin"),
@@ -49,6 +48,6 @@ if (version !== CACHE_VERSION) {
         }),
       ),
     )
-  } catch (e) {}
+  } catch (e) { }
   await Filesystem.write(path.join(Global.Path.cache, "version"), CACHE_VERSION)
 }

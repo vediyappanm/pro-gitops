@@ -48,7 +48,7 @@ process.on("uncaughtException", (e) => {
 
 let cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName("archon")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
@@ -77,12 +77,12 @@ let cli = yargs(hideBin(process.argv))
     process.env.AGENT = "1"
     process.env.OPENCODE = "1"
 
-    Log.Default.info("opencode", {
+    Log.Default.info("archon", {
       version: Installation.VERSION,
       args: process.argv.slice(2),
     })
 
-    const marker = path.join(Global.Path.data, "opencode.db")
+    const marker = path.join(Global.Path.data, "archon.db")
     if (!(await Filesystem.exists(marker))) {
       const tty = process.stderr.isTTY
       process.stderr.write("Performing one time database migration, may take a few minutes..." + EOL)

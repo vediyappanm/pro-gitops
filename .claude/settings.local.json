@@ -7,7 +7,8 @@
       "Bash(pkill:*)",
       "Bash(sleep 3:*)",
       "Bash(curl:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(git:*)"
     ]
   }
 }
