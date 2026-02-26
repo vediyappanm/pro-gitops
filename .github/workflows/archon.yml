@@ -28,5 +28,7 @@ jobs:
         uses: ./github
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: openrouter/deepseek/deepseek-v3-base:free
+          use_github_token: "true"
