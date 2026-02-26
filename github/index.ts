@@ -14,6 +14,10 @@ if (process.env.GITHUB_WORKSPACE) {
   process.chdir(process.env.GITHUB_WORKSPACE)
 }
 
+if (!process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX) {
+  process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = "4096"
+}
+
 type GitHubAuthor = {
   login: string
   name?: string
@@ -570,8 +574,10 @@ async function subscribeSessionEvents() {
               // Ignore parse errors
             }
           }
-        } catch (e) {
-          console.log("Subscribing to session events done", e)
+        } catch (e: any) {
+          if (e.code !== "ConnectionRefused") {
+            console.log("Subscribing to session events done", e)
+          }
           break
         }
       }
