@@ -656,12 +656,12 @@ async function configureGit(appToken: string) {
 
   console.log("Configuring git...")
   const config = "http.https://github.com/.extraheader"
-  const ret = await $`git config --local --get ${config}`
+  const ret = await $`git config --local --get ${config}`.nothrow()
   gitConfig = ret.stdout.toString().trim()
 
   const newCredentials = Buffer.from(`x-access-token:${appToken}`, "utf8").toString("base64")
 
-  await $`git config --local --unset-all ${config}`
+  await $`git config --local --unset-all ${config}`.nothrow()
   await $`git config --local ${config} "AUTHORIZATION: basic ${newCredentials}"`
   await $`git config --global user.name "archon-agent[bot]"`
   await $`git config --global user.email "archon-agent[bot]@users.noreply.github.com"`
