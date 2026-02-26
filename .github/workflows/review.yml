@@ -1,8 +1,8 @@
 name: review
 
 on:
-  issue_comment:
-    types: [created]
+  # Disabled: Using archon workflow instead
+  workflow_dispatch: # Manual trigger only
 
 jobs:
   check-guidelines:
