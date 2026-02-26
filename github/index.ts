@@ -654,7 +654,9 @@ async function chat(text: string, files: PromptFiles = []) {
 
   // @ts-ignore
   const match = chat.data.parts.findLast((p) => p.type === "text")
-  if (!match) throw new Error("Failed to parse the text response")
+  if (!match) {
+    throw new Error(`Failed to parse the text response: ${JSON.stringify(chat.data, null, 2)}`)
+  }
 
   return match.text
 }
