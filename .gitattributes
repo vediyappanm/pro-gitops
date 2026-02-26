@@ -1,0 +1,10 @@
+# Exclude heavy folders from GitHub Action download (git archive)
+packages/ui/ export-ignore
+packages/app/ export-ignore
+packages/web/ export-ignore
+packages/enterprise/ export-ignore
+packages/console/ export-ignore
+dist/ export-ignore
+.github/ export-ignore
+docs/ export-ignore
+tests/ export-ignore
