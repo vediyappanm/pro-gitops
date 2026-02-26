@@ -9,20 +9,20 @@ on:
 jobs:
   archon:
     if: |
-      contains(github.event.comment.body, ' /archon') ||
-      startsWith(github.event.comment.body, '/archon') ||
-      contains(github.event.comment.body, ' /ac') ||
-      startsWith(github.event.comment.body, '/ac')
+      contains(github.event.comment.body, '/archon') ||
+      startsWith(github.event.comment.body, '/archon')
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
       pull-requests: read
       issues: read
+      comments: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Run archon
