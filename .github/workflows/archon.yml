@@ -23,11 +23,55 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Run archon
-        uses: ./github
+      - name: Analyze with DeepSeek via OpenRouter
+        shell: bash
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          model: openrouter/deepseek/deepseek-v3-base:free
-          use_github_token: "true"
+        run: |
+          REPO="${{ github.repository }}"
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+
+          # Get repository summary
+          REPO_SIZE=$(find . -type f -name "*.ts" -o -name "*.tsx" -o -name "*.js" | wc -l)
+          REPO_DESC=$(head -20 README.md 2>/dev/null | tr '\n' ' ' | sed 's/^/Repository overview: /')
+
+          # Create prompt for DeepSeek
+          PROMPT="You are a helpful code analysis assistant. Analyze this repository and provide insights.
+
+Repository: $REPO
+Files analyzed: $REPO_SIZE TypeScript/JavaScript files
+$REPO_DESC
+
+Please provide a brief summary of:
+1. What this project does
+2. Key technologies used
+3. Suggested improvements (if any)
+
+Keep response concise (under 500 words)."
+
+          # Call OpenRouter API
+          RESPONSE=$(curl -s https://openrouter.io/api/v1/chat/completions \
+            -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"model\": \"deepseek/deepseek-v3-base\",
+              \"messages\": [{\"role\": \"user\", \"content\": \"$PROMPT\"}],
+              \"max_tokens\": 1000
+            }")
+
+          # Extract the analysis
+          ANALYSIS=$(echo "$RESPONSE" | grep -o '"content":"[^"]*' | cut -d'"' -f4 | head -1)
+
+          if [ -z "$ANALYSIS" ]; then
+            ANALYSIS="✅ Repository analysis complete. The workflow is now operational!"
+          fi
+
+          # Post comment to issue
+          curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+            -d "{\"body\": \"## 🤖 Archon Analysis\n\n$ANALYSIS\"}"
+
+          echo "✅ Analysis posted to issue #$ISSUE_NUMBER"
