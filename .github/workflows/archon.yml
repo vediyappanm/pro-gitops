@@ -19,10 +19,21 @@ jobs:
       issues: read
       comments: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      - name: Manual git clone with error reporting
+        shell: bash
+        run: |
+          set -x
+          mkdir -p /tmp/repo
+          cd /tmp/repo
+          git clone --depth=1 --no-checkout https://github.com/${{ github.repository }}.git . 2>&1
+          git checkout HEAD 2>&1 || { echo "Checkout failed, trying sparse-checkout disable"; git config core.sparseCheckout false; git checkout HEAD; }
+          ls -la | head -20
+
+      - name: Copy to workspace
+        shell: bash
+        run: |
+          cp -r /tmp/repo "$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE"
 
       - name: Run archon
         uses: ./github
