@@ -653,6 +653,13 @@ async function chat(text: string, files: PromptFiles = []) {
   })
 
   // @ts-ignore
+  if (chat.data.info.error) {
+    // @ts-ignore
+    const errorMsg = chat.data.info.error.data?.message || chat.data.info.error.name
+    throw new Error(`Archon AI Error: ${errorMsg}`)
+  }
+
+  // @ts-ignore
   const match = chat.data.parts.findLast((p) => p.type === "text")
   if (!match) {
     throw new Error(`Failed to parse the text response: ${JSON.stringify(chat.data, null, 2)}`)
