@@ -23,8 +23,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          token: ${{ github.token }}
-          ref: ${{ github.event.issue.base.ref || github.ref }}
 
       - name: Run archon
         uses: ./github
