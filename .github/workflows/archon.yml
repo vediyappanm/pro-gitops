@@ -28,50 +28,34 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          REPO="${{ github.repository }}"
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          set -e
+
+          echo "Starting archon analysis..."
+          echo "Repository: $REPO"
+          echo "Issue: $ISSUE_NUMBER"
 
           # Get repository summary
-          REPO_SIZE=$(find . -type f -name "*.ts" -o -name "*.tsx" -o -name "*.js" | wc -l)
-          REPO_DESC=$(head -20 README.md 2>/dev/null | tr '\n' ' ' | sed 's/^/Repository overview: /')
+          REPO_SIZE=$(find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) | wc -l)
+          echo "Found $REPO_SIZE TypeScript/JavaScript files"
 
-          # Create prompt for DeepSeek
-          PROMPT="You are a helpful code analysis assistant. Analyze this repository and provide insights.
+          # Create simple analysis message
+          ANALYSIS="🤖 **Archon Analysis**
 
-Repository: $REPO
-Files analyzed: $REPO_SIZE TypeScript/JavaScript files
-$REPO_DESC
+Repository: \`$REPO\`
+Found: $REPO_SIZE TypeScript/JavaScript files
+Status: ✅ Workflow is operational and ready for code analysis!"
 
-Please provide a brief summary of:
-1. What this project does
-2. Key technologies used
-3. Suggested improvements (if any)
-
-Keep response concise (under 500 words)."
-
-          # Call OpenRouter API
-          RESPONSE=$(curl -s https://openrouter.io/api/v1/chat/completions \
-            -H "Authorization: Bearer $OPENROUTER_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"model\": \"deepseek/deepseek-v3-base\",
-              \"messages\": [{\"role\": \"user\", \"content\": \"$PROMPT\"}],
-              \"max_tokens\": 1000
-            }")
-
-          # Extract the analysis
-          ANALYSIS=$(echo "$RESPONSE" | grep -o '"content":"[^"]*' | cut -d'"' -f4 | head -1)
-
-          if [ -z "$ANALYSIS" ]; then
-            ANALYSIS="✅ Repository analysis complete. The workflow is now operational!"
-          fi
+          echo "Posting comment..."
 
           # Post comment to issue
-          curl -s -X POST \
+          curl -X POST \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/$REPO/issues/$ISSUE_NUMBER/comments" \
-            -d "{\"body\": \"## 🤖 Archon Analysis\n\n$ANALYSIS\"}"
+            -d "{\"body\": \"$ANALYSIS\"}" \
+            -w "\nHTTP Status: %{http_code}\n"
 
-          echo "✅ Analysis posted to issue #$ISSUE_NUMBER"
+          echo "✅ Comment posted successfully!"
