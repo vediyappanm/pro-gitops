@@ -15,7 +15,7 @@ if (process.env.GITHUB_WORKSPACE) {
 }
 
 if (!process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX) {
-  process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = "4096"
+  process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = "2048"
 }
 
 type GitHubAuthor = {
