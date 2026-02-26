@@ -35,45 +35,62 @@ inputs:
     required: false
 
   oidc_base_url:
-    description: "Base URL for OIDC token exchange API. Only required when running a custom GitHub App install. Defaults to https://api.archon.ai"
+    description: "Base URL for OIDC token exchange API. Only required when running a custom GitHub App install."
     required: false
 
 runs:
   using: "composite"
   steps:
-    - name: Get archon version
-      id: version
-      shell: bash
-      run: |
-        VERSION=$(curl -sf https://api.github.com/repos/anomalyco/archon/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-        echo "version=${VERSION:-latest}" >> $GITHUB_OUTPUT
-
-    - name: Cache archon
-      id: cache
-      uses: actions/cache@v4
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
       with:
-        path: ~/.archon/bin
-        key: archon-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+        bun-version: latest
 
-    - name: Install archon
-      if: steps.cache.outputs.cache-hit != 'true'
+    - name: Install root dependencies
       shell: bash
-      run: curl -fsSL https://archon.ai/install | bash
+      working-directory: ${{ github.action_path }}/..
+      run: bun install --frozen-lockfile
 
-    - name: Add archon to PATH
+    - name: Build archon binary from source
       shell: bash
-      run: echo "$HOME/.archon/bin" >> $GITHUB_PATH
+      working-directory: ${{ github.action_path }}/../packages/opencode
+      run: bun run build --single --skip-install
+      env:
+        CI: "true"
+
+    - name: Install archon binary to PATH
+      shell: bash
+      working-directory: ${{ github.action_path }}/../packages/opencode
+      run: |
+        mkdir -p "$HOME/.archon/bin"
+        # Find the built binary (single build outputs for current platform)
+        BINARY=$(find dist -name "opencode" -o -name "opencode.exe" 2>/dev/null | head -1)
+        if [ -z "$BINARY" ]; then
+          echo "ERROR: Built binary not found in dist/"
+          ls -la dist/ || true
+          exit 1
+        fi
+        cp "$BINARY" "$HOME/.archon/bin/archon"
+        chmod +x "$HOME/.archon/bin/archon"
+        echo "$HOME/.archon/bin" >> $GITHUB_PATH
+        echo "Installed archon from $BINARY"
+
+    - name: Install github action dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: bun install
 
     - name: Run archon
       shell: bash
-      id: run_opencode
-      run: archon github run
+      working-directory: ${{ github.action_path }}
+      run: bun run index.ts
       env:
         MODEL: ${{ inputs.model }}
         AGENT: ${{ inputs.agent }}
         SHARE: ${{ inputs.share }}
         PROMPT: ${{ inputs.prompt }}
         USE_GITHUB_TOKEN: ${{ inputs.use_github_token }}
+        TOKEN: ${{ env.GITHUB_TOKEN }}
         MENTIONS: ${{ inputs.mentions }}
         VARIANT: ${{ inputs.variant }}
         OIDC_BASE_URL: ${{ inputs.oidc_base_url }}
