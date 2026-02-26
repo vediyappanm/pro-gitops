@@ -8,9 +8,6 @@ on:
 
 jobs:
   archon:
-    if: |
-      contains(github.event.comment.body, '/archon') ||
-      startsWith(github.event.comment.body, '/archon')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -18,44 +15,45 @@ jobs:
       issues: read
       comments: write
     steps:
+      - name: Check if should run
+        id: check
+        shell: bash
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          if [[ "$COMMENT" == *"/archon"* ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "✅ Archon trigger detected"
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "⏭️ Skipping - no /archon trigger found"
+          fi
+
       - name: Checkout repository
+        if: steps.check.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Analyze with DeepSeek via OpenRouter
+      - name: Post analysis to issue
+        if: steps.check.outputs.should_run == 'true'
         shell: bash
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -e
 
-          echo "Starting archon analysis..."
+          echo "✅ Archon workflow triggered!"
           echo "Repository: $REPO"
           echo "Issue: $ISSUE_NUMBER"
-
-          # Get repository summary
-          REPO_SIZE=$(find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) | wc -l)
-          echo "Found $REPO_SIZE TypeScript/JavaScript files"
-
-          # Create simple analysis message
-          ANALYSIS="🤖 **Archon Analysis**
-
-Repository: \`$REPO\`
-Found: $REPO_SIZE TypeScript/JavaScript files
-Status: ✅ Workflow is operational and ready for code analysis!"
-
-          echo "Posting comment..."
 
           # Post comment to issue
           curl -X POST \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/$REPO/issues/$ISSUE_NUMBER/comments" \
-            -d "{\"body\": \"$ANALYSIS\"}" \
+            -d "{\"body\": \"🤖 **Archon Analysis Active**\n\nWorkflow is running and analyzing your repository!\n\n✅ Status: Ready for code analysis\"}" \
             -w "\nHTTP Status: %{http_code}\n"
 
-          echo "✅ Comment posted successfully!"
+          echo "✅ Comment posted!"
