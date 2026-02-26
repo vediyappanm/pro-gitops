@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: opencode-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-opencode}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-opencode}
+      POSTGRES_DB: ${DB_NAME:-opencode_prod}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opencode"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - opencode-network
+
+  # Backend API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: opencode-api
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-opencode}:${DB_PASSWORD:-opencode}@db:5432/${DB_NAME:-opencode_prod}
+      NODE_ENV: production
+      PORT: 3000
+      API_KEY: ${API_KEY:-your-secret-key}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - opencode-network
+    restart: unless-stopped
+
+  # Frontend (Optional - for production simulation)
+  web:
+    image: node:20-alpine
+    container_name: opencode-web
+    working_dir: /app
+    volumes:
+      - ./packages/app:/app
+    environment:
+      VITE_API_URL: http://api:3000
+      VITE_WS_URL: ws://api:3000
+    ports:
+      - "3001:5173"
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - api
+    networks:
+      - opencode-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  opencode-network:
+    driver: bridge

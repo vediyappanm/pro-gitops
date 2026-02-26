@@ -70,7 +70,10 @@ export default function Home() {
 
   return (
     <div class="mx-auto mt-55 w-full md:w-auto px-4">
-      <Logo class="md:w-xl opacity-12" />
+      <div class="flex flex-col items-center gap-2">
+        <Logo class="w-64 md:w-96" />
+        <div class="text-11-regular text-text-weaker tracking-widest uppercase">AI-Powered Development</div>
+      </div>
       <Button
         size="large"
         variant="ghost"

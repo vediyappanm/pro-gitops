@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo No process on port 3000:*)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill:*)",
+      "Bash(pkill:*)",
+      "Bash(sleep 3:*)",
+      "Bash(curl:*)",
+      "Bash(cd:*)"
+    ]
+  }
+}

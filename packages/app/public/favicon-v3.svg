@@ -1,1 +1,5 @@
-../../ui/src/assets/favicon/favicon-v3.svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <rect width="96" height="96" rx="20" fill="#FF6D1F"/>
+  <path d="M48 16L76 80H63L48 44L33 80H20L48 16Z" fill="white"/>
+  <rect x="30" y="60" width="36" height="8" rx="1" fill="white"/>
+</svg>
