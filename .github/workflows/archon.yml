@@ -1,0 +1,33 @@
+name: archon
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  archon:
+    if: |
+      contains(github.event.comment.body, ' /archon') ||
+      startsWith(github.event.comment.body, '/archon') ||
+      contains(github.event.comment.body, ' /ac') ||
+      startsWith(github.event.comment.body, '/ac')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run archon
+        uses: anomalyco/archon/github@latest
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        with:
+          model: openrouter/deepseek/deepseek-v3-base:free
