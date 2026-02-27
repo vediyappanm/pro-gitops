@@ -615,29 +615,35 @@ async function subscribeSessionEvents() {
   }
 
   const response = await fetch(`${server.url}/event`)
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Failed to subscribe to session events: ${response.status} ${response.statusText}\n${text}`)
+  }
   if (!response.body) throw new Error("No response body")
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
 
+  console.log("Event stream connected, listening for tool execution logs...")
   let text = ""
     ; (async () => {
-      while (true) {
-        try {
-          const { done, value } = await reader.read()
-          if (done) break
+      try {
+        while (true) {
+          try {
+            const { done, value } = await reader.read()
+            if (done) break
 
-          const chunk = decoder.decode(value, { stream: true })
-          const lines = chunk.split("\n")
+            const chunk = decoder.decode(value, { stream: true })
+            const lines = chunk.split("\n")
 
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue
 
-            const jsonStr = line.slice(6).trim()
-            if (!jsonStr) continue
+              const jsonStr = line.slice(6).trim()
+              if (!jsonStr) continue
 
-            try {
-              const evt = JSON.parse(jsonStr)
+              try {
+                const evt = JSON.parse(jsonStr)
 
               if (evt.type === "message.part.updated") {
                 if (evt.properties.part.sessionID !== session.id) continue
@@ -677,11 +683,14 @@ async function subscribeSessionEvents() {
           }
         } catch (e: any) {
           if (e.code !== "ConnectionRefused") {
-            console.log("Subscribing to session events done", e)
+            console.error("[EventStream] Error:", e.message || e)
           }
           break
         }
       }
+    } catch (e: any) {
+      console.error("[EventStream] Fatal error:", e.message || e)
+    }
     })()
 }
 
