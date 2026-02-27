@@ -229,7 +229,7 @@ try {
     if (useDirectApi) {
       response = await chatDirect(`${userPrompt}\n\n${dataPrompt}`)
       // Lite Writer Logic: Parse "FILE: x" blocks and write them
-      const fileMatches = response.matchAll(/FILE:\s*([^\n]+)\s*\n```[^\n]*\n([\s\S]*?)```/g)
+      const fileMatches = response.matchAll(/FILE:\s*([^\n]+)\s*\r?\n\s*```[^\n]*\n([\s\S]*?)```/g)
       let filesWritten = 0
       for (const match of fileMatches) {
         const filePath = match[1].trim()
