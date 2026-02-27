@@ -778,55 +778,50 @@ async function chatDirect(text: string): Promise<string> {
     ? text.slice(0, MAX_CHARS) + "\n\n[... context truncated to fit token limits]"
     : text
 
-  // ── PATH 1: Use local opencode server via Cloudflare tunnel ──
+  // ── PATH 1: Try local opencode server via Cloudflare tunnel ──
   if (archonApiUrl) {
-    console.log(`[chatDirect] Using local opencode server at ${archonApiUrl}`)
-    const { createArchonClient } = await import("@opencode-ai/sdk")
-    const remoteClient = createArchonClient({ baseUrl: archonApiUrl, throwOnError: true })
-
-    // Create a fresh session on the remote opencode server
-    const sessionRes = await remoteClient.session.create<true>()
-    const remoteSession = sessionRes.data
-
-    // Determine model: parse MODEL env or fall back to opencode provider defaults
-    let providerID = "anthropic"
-    let modelID = "claude-3-5-sonnet-20241022"
     try {
-      const parsed = useEnvModel()
-      // If MODEL is in "opencode/..." format, pass provider+model, else use opencode defaults
-      if (parsed.providerID === "opencode") {
-        // Let the server pick the default model; just pass the server's registered provider
-        providerID = "opencode"
-        modelID = parsed.modelID
-      } else {
+      console.log(`[chatDirect] Trying local opencode server at ${archonApiUrl}`)
+      const { createArchonClient } = await import("@opencode-ai/sdk")
+      const remoteClient = createArchonClient({ baseUrl: archonApiUrl, throwOnError: true })
+
+      // Create a fresh session on the remote opencode server
+      const sessionRes = await remoteClient.session.create<true>()
+      const remoteSession = sessionRes.data
+
+      // Determine model from MODEL env or fall back
+      let providerID = "groq"
+      let modelID = "llama-3.1-8b-instant"
+      try {
+        const parsed = useEnvModel()
         providerID = parsed.providerID
         modelID = parsed.modelID
+      } catch (_) { }
+
+      console.log(`[chatDirect] Prompting ${providerID}/${modelID} on remote opencode server...`)
+      const chatRes = await remoteClient.session.prompt<true>({
+        path: { id: remoteSession.id },
+        body: {
+          model: { providerID, modelID },
+          parts: [{ type: "text", text: truncatedText }],
+        },
+      })
+
+      const responseData = chatRes.data as any
+      const error = responseData?.info?.error || responseData?.error
+      if (error) {
+        const errorMsg = error.data?.message || error.message || error.name || JSON.stringify(error)
+        throw new Error(`Archon AI Error: ${errorMsg}`)
       }
-    } catch (_) {
-      // MODEL env not set — fall back to anthropic claude
+
+      const parts: any[] = responseData?.parts || responseData?.info?.parts || []
+      const match = parts.findLast((p: any) => p.type === "text")
+      if (!match) throw new Error("chatDirect via opencode: no text part in response")
+      console.log(`[chatDirect] Got response via opencode server (${match.text.length} chars)`)
+      return match.text
+    } catch (e: any) {
+      console.warn(`[chatDirect] Remote opencode server failed (${e.message}), falling back to Groq...`)
     }
-
-    console.log(`[chatDirect] Prompting ${providerID}/${modelID} on remote opencode server...`)
-    const chatRes = await remoteClient.session.prompt<true>({
-      path: { id: remoteSession.id },
-      body: {
-        model: { providerID, modelID },
-        parts: [{ type: "text", text: truncatedText }],
-      },
-    })
-
-    const responseData = chatRes.data as any
-    const error = responseData?.info?.error || responseData?.error
-    if (error) {
-      const errorMsg = error.data?.message || error.message || error.name || JSON.stringify(error)
-      throw new Error(`Archon AI Error: ${errorMsg}`)
-    }
-
-    const parts: any[] = responseData?.parts || responseData?.info?.parts || []
-    const match = parts.findLast((p: any) => p.type === "text")
-    if (!match) throw new Error("chatDirect via opencode: no text part in response")
-    console.log(`[chatDirect] Got response via opencode server (${match.text.length} chars)`)
-    return match.text
   }
 
   // ── PATH 2: Fallback — Groq direct API (no ARCHON_API_URL set) ──

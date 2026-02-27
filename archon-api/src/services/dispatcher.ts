@@ -143,7 +143,6 @@ jobs:
         issue_number: (issue_number ?? '').toString(),
         comment_id: (comment_id ?? '').toString(),
         model: model,
-        archon_api_url: process.env.ARCHON_API_URL || '',
         enable_tools: 'false',
         groq_api_key: process.env.GROQ_API_KEY || '',
         openai_api_key: process.env.OPENAI_API_KEY || '',
