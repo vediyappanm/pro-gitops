@@ -80,9 +80,10 @@ async function handleArchonCommand(installationId: number, payload: any) {
         commentId = await postComment(token, payload, greeting)
 
         const modelConfig = routeToModel(plan.tier)
+        const modelStr = `${modelConfig.provider}/${modelConfig.modelId}`
 
         // DISPATCH the agent via GitHub Actions
-        const dispatched = await dispatchAgent(installationId, payload, plan)
+        const dispatched = await dispatchAgent(installationId, payload, plan, modelStr)
 
         if (dispatched) {
             await updateComment(token, payload, commentId, `🚀 Archon is now processing your request using **${modelConfig.modelId}**.\n\nYou can track progress in your Dashboard.`)

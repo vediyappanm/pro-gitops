@@ -1,7 +1,7 @@
 import { Octokit } from "@octokit/rest"
 import { getInstallationToken } from "./github.js"
 
-export async function dispatchAgent(installationId: number, payload: any, plan: any) {
+export async function dispatchAgent(installationId: number, payload: any, plan: any, model: string) {
   const token = await getInstallationToken(installationId)
   const octokit = new Octokit({ auth: token })
 
@@ -9,8 +9,6 @@ export async function dispatchAgent(installationId: number, payload: any, plan: 
   const issue_number = payload.issue ? payload.issue.number : payload.pull_request?.number
   const comment_id = payload.comment?.id
 
-  // Use the free local model — routes through ARCHON_API_URL tunnel to user's machine
-  const model = plan.tier === 'pro' ? 'opencode/trinity-large-preview-free' : 'opencode/trinity-large-preview-free'
   const workflowPath = '.github/workflows/archon-managed.yml'
 
   // The workflow content injected into the target repo.
@@ -45,6 +43,9 @@ on:
       openai_api_key:
         description: 'OpenAI API Key'
         required: false
+      anthropic_api_key:
+        description: 'Anthropic API Key'
+        required: false
 
 jobs:
   archon:
@@ -69,6 +70,7 @@ jobs:
           ARCHON_API_URL: \${{ github.event.inputs.archon_api_url }}
           GROQ_API_KEY: \${{ github.event.inputs.groq_api_key }}
           OPENAI_API_KEY: \${{ github.event.inputs.openai_api_key }}
+          ANTHROPIC_API_KEY: \${{ github.event.inputs.anthropic_api_key }}
         with:
           model: \${{ github.event.inputs.model }}
           enable_tools: \${{ github.event.inputs.enable_tools }}
@@ -148,6 +150,7 @@ jobs:
         enable_tools: 'true',
         groq_api_key: process.env.GROQ_API_KEY || '',
         openai_api_key: process.env.OPENAI_API_KEY || '',
+        anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
         archon_token: Buffer.from(JSON.stringify({ orgId: owner.id })).toString('base64')
       }
     })

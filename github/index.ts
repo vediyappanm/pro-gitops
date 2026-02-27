@@ -163,7 +163,7 @@ try {
   assertPayloadKeyword()
 
   const perfInit = perf("Total initialization")
-  
+
   // Step 1: Get token and connect to archon in parallel
   const perfToken = perf("Get token + connect to archon")
   const [token] = await Promise.all([
@@ -171,7 +171,7 @@ try {
     assertArchonConnected(),
   ])
   perfToken()
-  
+
   // Step 2: Initialize Github clients
   accessToken = token
   octoRest = new Octokit({ auth: accessToken })
@@ -191,7 +191,7 @@ try {
   const perfIssueData = perf("Fetch issue/PR data")
   const issueOrPrData = await (isPr ? fetchPR() : fetchIssue())
   perfIssueData()
-  
+
   const perfGit = perf("Configure git")
   await configureGit(accessToken)
   perfGit()
@@ -210,22 +210,22 @@ try {
   const perfSession = perf("Create session + subscribe to events")
   const sessionData = await client.session.create<true>().then((r) => r.data)
   session = sessionData
-  
+
   // Subscribe to events in background
   subscribeSessionEvents()
   perfSession()
-  
+
   // Share session (only if public repo and sharing enabled)
   if (useEnvShare() !== false && (useEnvShare() === true || !repoData.data.private)) {
     await client.session.share<true>({ path: { id: session.id } })
     shareId = session.id.slice(-8)
   }
-  
+
   console.log("archon session", session.id)
   if (shareId) {
     console.log("Share link:", `${useShareUrl()}/s/${shareId}`)
   }
-  
+
   perfInit()
 
   // Handle 3 cases
@@ -398,7 +398,7 @@ async function assertArchonConnected() {
   let connected = false
   const MAX_RETRIES = 30
   const INITIAL_DELAY = 100 // Start with 100ms instead of 300ms
-  
+
   do {
     try {
       await client.app.log<true>({
@@ -411,7 +411,7 @@ async function assertArchonConnected() {
       connected = true
       break
     } catch (e) { }
-    
+
     // Exponential backoff: 100ms, 150ms, 225ms, ...
     const delay = INITIAL_DELAY * Math.pow(1.5, retry)
     await Bun.sleep(Math.min(delay, 1000))
@@ -968,31 +968,19 @@ async function chat(text: string, files: PromptFiles = []) {
 // The opencode SDK remote path (session.prompt) returns {} because the server uses SSE streaming,
 // not blocking HTTP. So we go straight to Groq which is synchronous and reliable.
 async function chatDirect(text: string): Promise<string> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY
   const groqKey = process.env.GROQ_API_KEY
-  if (!groqKey) throw new Error("GROQ_API_KEY is not set — cannot call Groq directly")
 
-  // Hard cap: keep under Groq TPM limits (llama-3.1-8b-instant: ~30k TPM)
-  const MAX_CHARS = 4_000
+  if (!anthropicKey && !groqKey) {
+    throw new Error("Neither ANTHROPIC_API_KEY nor GROQ_API_KEY is set — cannot call AI directly")
+  }
+
+  const MAX_CHARS = 10_000 // Claude can handle more context than free-tier Groq
   const truncatedText = text.length > MAX_CHARS
     ? text.slice(0, MAX_CHARS) + "\n\n[... context truncated to fit token limits]"
     : text
 
-  // Always use llama-3.1-8b-instant (small, free, fast, ~1500 tokens per call)
-  const modelId = "llama-3.1-8b-instant"
-  console.log(`[chatDirect] Calling groq/${modelId} (${truncatedText.length} chars input)`)
-
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${groqKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [
-        {
-          role: "system",
-          content: `You are Archon, a world-class AI software engineer and code reviewer.
+  const systemPrompt = `You are Archon, a world-class AI software engineer and code reviewer.
 
 Your job is to help developers by:
 - Analyzing and reviewing code in Pull Requests
@@ -1010,26 +998,72 @@ RULES:
   full file content here
   \`\`\`
 - NEVER modify files in '.github/workflows/' unless explicitly asked
-- Keep responses focused and under 1500 words
-- Use markdown formatting for readability`,
-        },
-        { role: "user", content: truncatedText },
-      ],
-      max_tokens: 2000,
-      temperature: 0.2,
-    }),
-  })
+- Keep responses focused and professional
+- Use markdown formatting for readability`
 
-  if (!res.ok) {
-    const errBody = await res.json().catch(() => ({})) as any
-    throw new Error(`Groq direct API error ${res.status}: ${errBody?.error?.message || res.statusText}`)
+  // 1. Prefer Anthropic Claude if key is available
+  if (anthropicKey) {
+    console.log(`[chatDirect] Calling anthropic/claude-3-5-sonnet-20241022 (${truncatedText.length} chars input)`)
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        system: systemPrompt,
+        messages: [{ role: "user", content: truncatedText }],
+        max_tokens: 4000,
+      }),
+    })
+
+    if (res.ok) {
+      const data = await res.json() as any
+      const content = data?.content?.[0]?.text
+      if (content) {
+        console.log(`[chatDirect] Got response via Anthropic (${content.length} chars)`)
+        return content
+      }
+    } else {
+      const err = await res.text()
+      console.warn(`[chatDirect] Anthropic call failed, falling back to Groq: ${err}`)
+    }
   }
 
-  const data = await res.json() as any
-  const content = data?.choices?.[0]?.message?.content
-  if (!content) throw new Error(`Groq direct API returned empty response: ${JSON.stringify(data)}`)
-  console.log(`[chatDirect] Got response via Groq (${content.length} chars)`)
-  return content
+  // 2. Fallback to Groq
+  if (groqKey) {
+    const modelId = "llama-3.1-8b-instant"
+    console.log(`[chatDirect] Calling groq/${modelId} (${truncatedText.length} chars input)`)
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${groqKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: truncatedText },
+        ],
+        max_tokens: 2000,
+        temperature: 0.2,
+      }),
+    })
+
+    if (res.ok) {
+      const data = await res.json() as any
+      const content = data?.choices?.[0]?.message?.content
+      if (content) {
+        console.log(`[chatDirect] Got response via Groq (${content.length} chars)`)
+        return content
+      }
+    }
+  }
+
+  throw new Error("All AI providers (Anthropic, Groq) failed to respond.")
 }
 
 async function configureGit(appToken: string) {
