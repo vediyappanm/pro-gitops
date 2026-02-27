@@ -696,9 +696,9 @@ async function subscribeSessionEvents() {
   const decoder = new TextDecoder()
 
   console.log("Event stream connected, listening for tool execution logs...")
-  
+
   // Start reading events asynchronously without blocking
-  (async () => {
+  void (async () => {
     try {
       while (true) {
         try {
