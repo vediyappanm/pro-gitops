@@ -31,6 +31,9 @@ on:
       archon_token:
         description: 'SaaS Token'
         required: false
+      groq_api_key:
+        description: 'Groq API Key for AI model access'
+        required: false
 
 jobs:
   archon:
@@ -51,6 +54,7 @@ jobs:
           GITHUB_TOKEN: \${{ github.token }}
           ARCHON_SaaS_TOKEN: \${{ github.event.inputs.archon_token }}
           ISSUE_NUMBER: \${{ github.event.inputs.issue_number }}
+          GROQ_API_KEY: \${{ github.event.inputs.groq_api_key }}
         with:
           model: \${{ github.event.inputs.model }}
 
@@ -125,6 +129,7 @@ jobs:
         issue_number: (issue_number ?? '').toString(),
         comment_id: (comment_id ?? '').toString(),
         model: model,
+        groq_api_key: process.env.GROQ_API_KEY || '',
         archon_token: Buffer.from(JSON.stringify({ orgId: owner.id })).toString('base64')
       }
     })
