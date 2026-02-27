@@ -498,8 +498,9 @@ async function getUserPrompt(data: GitHubIssue | GitHubPullRequest) {
   const context = useContext()
   const commentId = useCommentId()
 
-  const triggerComment = data.comments.nodes.find(c => c.databaseId === commentId)
+  const triggerComment = data.comments.nodes.find(c => String(c.databaseId) === String(commentId))
   const body = (triggerComment?.body || data.body).trim()
+  console.log(`[getUserPrompt] Trigger ID: ${commentId}, Found: ${!!triggerComment}, Body starts with: ${body.slice(0, 20)}`)
   const reviewContext = getReviewCommentContext()
 
   let prompt = (() => {
@@ -1068,10 +1069,9 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }
 
 function buildPromptDataForIssue(issue: GitHubIssue) {
-  const context = useContext()
-  const triggerCommentId = useCommentId()
+  const commentId = useCommentId()
 
-  const triggerComment = issue.comments.nodes.find(c => c.databaseId === triggerCommentId)
+  const triggerComment = issue.comments.nodes.find(c => String(c.databaseId) === String(commentId))
   const lastPrompt = triggerComment?.body || issue.body
 
   // ATOMIC CONTEXT: If this is a command run, do NOT send any history or older logs.
