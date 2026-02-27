@@ -453,15 +453,17 @@ async function createComment() {
 
 async function getUserPrompt() {
   const context = useContext()
+
+  // For workflow_dispatch, there is no comment payload — return early with a default prompt
+  if (context.eventName === "workflow_dispatch") {
+    return { userPrompt: "Summarize this issue and suggest next steps.", promptFiles: [] }
+  }
+
   const payload = context.payload as IssueCommentEvent | PullRequestReviewCommentEvent
   const reviewContext = getReviewCommentContext()
   const body = payload.comment.body.trim()
 
   let prompt = (() => {
-    if (context.eventName === "workflow_dispatch") {
-      return "/archon"
-    }
-
     if (body === "/archon" || body === "/ac" || body === "/opencode" || body === "/oc") {
       if (reviewContext) {
         return `Review this code change and suggest improvements for the commented lines:\n\nFile: ${reviewContext.file}\nLines: ${reviewContext.line}\n\n${reviewContext.diffHunk}`

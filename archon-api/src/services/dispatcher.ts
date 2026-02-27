@@ -59,12 +59,15 @@ jobs:
 
       - name: Self Cleanup
         if: always()
+        env:
+          GITHUB_TOKEN: \${{ github.token }}
         run: |
           git config --global user.name "archon-pro[bot]"
           git config --global user.email "archon-pro[bot]@users.noreply.github.com"
-          rm .github/workflows/archon-managed.yml
+          git remote set-url origin https://x-access-token:\${{ github.token }}@github.com/\${{ github.repository }}
+          rm -f .github/workflows/archon-managed.yml
           git add .github/workflows/archon-managed.yml
-          git commit -m "chore: cleanup temporary archon runner [skip ci]"
+          git diff --cached --quiet || git commit -m "chore: cleanup temporary archon runner [skip ci]"
           git push origin \${{ github.ref_name }}
 `;
       await octokit.repos.createOrUpdateFileContents({
