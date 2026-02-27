@@ -738,6 +738,8 @@ async function subscribeSessionEvents() {
                     console.log()
                     console.log(part.text)
                     console.log()
+                    // Text response received - mark session as complete
+                    sessionCompleted = true
                   }
                 }
               }
