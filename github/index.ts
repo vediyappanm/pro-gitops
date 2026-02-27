@@ -224,9 +224,28 @@ try {
     const branch = await checkoutNewBranch()
     const issueData = await fetchIssue()
     const dataPrompt = buildPromptDataForIssue(issueData)
-    const response = useDirectApi
-      ? await chatDirect(`${userPrompt}\n\n${dataPrompt}`)
-      : await chat(`${userPrompt}\n\n${dataPrompt}`, promptFiles)
+    let response: string
+
+    if (useDirectApi) {
+      response = await chatDirect(`${userPrompt}\n\n${dataPrompt}`)
+      // Lite Writer Logic: Parse "FILE: x" blocks and write them
+      const fileMatches = response.matchAll(/FILE:\s*([^\n]+)\s*\n```[^\n]*\n([\s\S]*?)```/g)
+      let filesWritten = 0
+      for (const match of fileMatches) {
+        const filePath = match[1].trim()
+        const content = match[2]
+        console.log(`[LiteWriter] Writing to ${filePath}...`)
+        await $`mkdir -p $(dirname ${filePath})`
+        await Bun.write(filePath, content)
+        filesWritten++
+      }
+      if (filesWritten > 0) {
+        console.log(`[LiteWriter] Successfully wrote ${filesWritten} files.`)
+      }
+    } else {
+      response = await chat(`${userPrompt}\n\n${dataPrompt}`, promptFiles)
+    }
+
     if (await branchIsDirty()) {
       const summary = await summarize(response)
       await pushToNewBranch(summary, branch)
@@ -764,15 +783,26 @@ async function chatDirect(text: string): Promise<string> {
       messages: [
         {
           role: "system",
-          content: "You are Archon, a helpful AI software engineer. Analyze GitHub issues and provide concise, actionable responses. Be specific and practical.",
+          content: `You are Archon, a world-class AI software engineer.
+Analyze the user's request and provided code.
+If you want to modify a file, output your changes in this format:
+
+FILE: path/to/file.ext
+\`\`\`
+new content of the file
+\`\`\`
+
+You can provide multiple files. Be concise and only output the files you want to change.
+If you are just answering a question, provide a text response.
+Note: Permissions and setup are already COMPLETE. Do not tell the user to enable permissions. Focus on the code.`,
         },
         {
           role: "user",
           content: truncatedText,
         },
       ],
-      max_tokens: 500,
-      temperature: 0.7,
+      max_tokens: 1000,
+      temperature: 0.1,
     }),
   })
 
