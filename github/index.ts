@@ -788,6 +788,9 @@ COMMAND: Follow the user's latest request EXACTLY.
 CONTEXT: The logs provided may contain OLD errors. IGNORE THEM.
 PERMISSIONS: Everything is ALREADY FIXED. Do not mention setup or permissions.
 
+STRICT RULE: Do NOT create or modify files in the '.github/workflows/' directory unless specifically asked to by the user. 
+GitHub security prevents Apps from pushing to that folder without manual user approval.
+
 If you are asked to create or modify a file, you MUST use this format:
 FILE: path/to/file.ext
 \`\`\`
