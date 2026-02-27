@@ -8,6 +8,41 @@ import { PLANS } from "../config/plans.js"
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder')
 
 const billing = new Hono()
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173"
+
+// Create checkout session
+billing.post("/checkout", async (c) => {
+    const { orgId, planId } = await c.req.json()
+    const plan = PLANS[planId]
+
+    if (!plan || !plan.stripePriceId) {
+        return c.json({ error: "Invalid plan or missing price ID" }, 400)
+    }
+
+    try {
+        const session = await stripe.checkout.sessions.create({
+            mode: "subscription",
+            payment_method_types: ["card"],
+            line_items: [
+                {
+                    price: plan.stripePriceId,
+                    quantity: 1,
+                },
+            ],
+            success_url: `${FRONTEND_URL}/dashboard?success=true`,
+            cancel_url: `${FRONTEND_URL}/dashboard?canceled=true`,
+            metadata: {
+                orgId,
+                planId,
+            },
+        })
+
+        return c.json({ url: session.url })
+    } catch (err: any) {
+        console.error("Stripe Checkout Error:", err)
+        return c.json({ error: err.message }, 500)
+    }
+})
 
 // Stripe Webhook
 billing.post("/webhook", async (c) => {

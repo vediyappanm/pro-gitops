@@ -60,6 +60,19 @@ function App() {
     setData(null)
   }
 
+  const handleUpgrade = async (planId: string) => {
+    if (!data?.org?.id) return
+    try {
+      setIsLoading(true)
+      const { createCheckoutSession } = await import('./lib/api')
+      const url = await createCheckoutSession(planId, data.org.id)
+      window.location.href = url
+    } catch (err) {
+      console.error("Failed to create checkout session", err)
+      setIsLoading(false)
+    }
+  }
+
   const handleLogin = () => {
     window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth/github`
   }
@@ -264,15 +277,19 @@ function App() {
                 <PlanCard
                   name="Pro"
                   price="$19"
+                  planId="pro"
                   features={["500 Requests/mo", "Claude 3.5 Sonnet", "Private Repos", "Priority Support"]}
                   current={data?.org?.plan === 'pro'}
+                  onUpgrade={() => handleUpgrade('pro')}
                 />
                 <PlanCard
                   name="Team"
                   price="$49"
+                  planId="team"
                   features={["2000 Requests/mo", "Custom Model Routing", "Team Management", "SLA"]}
                   highlight
                   current={data?.org?.plan === 'team'}
+                  onUpgrade={() => handleUpgrade('team')}
                 />
               </div>
             </motion.div>
@@ -319,7 +336,7 @@ function ActivityItem({ repo, action, time, status }: any) {
   )
 }
 
-function PlanCard({ name, price, features, current, highlight }: any) {
+function PlanCard({ name, price, features, current, highlight, onUpgrade }: any) {
   return (
     <div className={`glass-card plan-card ${highlight ? 'highlight' : ''} ${current ? 'current' : ''}`}>
       <h3>{name}</h3>
@@ -332,7 +349,11 @@ function PlanCard({ name, price, features, current, highlight }: any) {
           <li key={i}>{f}</li>
         ))}
       </ul>
-      <button className={`plan-btn ${highlight ? 'glow-btn' : ''}`}>
+      <button
+        className={`plan-btn ${highlight ? 'glow-btn' : ''}`}
+        onClick={onUpgrade}
+        disabled={current}
+      >
         {current ? 'Current Plan' : 'Upgrade Now'}
       </button>
     </div>

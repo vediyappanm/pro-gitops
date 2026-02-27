@@ -9,7 +9,7 @@ export interface ModelConfig {
 const MODEL_TIERS: Record<string, ModelConfig> = {
     free: {
         provider: "groq",
-        modelId: "meta-llama/llama-4-scout-17b-16e-instruct",
+        modelId: "llama-3.3-70b-versatile",
         apiKey: process.env.GROQ_API_KEY || "",
         maxTokens: 2048,
         tpmLimit: 30000,
