@@ -4,6 +4,7 @@ import { getInstallationToken, postComment, updateComment } from "../services/gi
 import { routeToModel } from "../services/ai-proxy.js"
 import { checkUserQuota, recordUsage, getUserPlan } from "../services/usage.js"
 import { dispatchAgent } from "../services/dispatcher.js"
+import { generateWelcomeMessage } from "../services/local-ai.js"
 
 const webhook = new Hono()
 
@@ -73,7 +74,10 @@ async function handleArchonCommand(installationId: number, payload: any) {
             return
         }
 
-        commentId = await postComment(token, payload, "⏳ Archon SaaS is initializing your request...")
+        const issueTitle = payload.issue ? payload.issue.title : (payload.pull_request?.title || "Unknown Issue");
+        const greeting = await generateWelcomeMessage(issueTitle, orgId);
+
+        commentId = await postComment(token, payload, greeting)
 
         const modelConfig = routeToModel(plan.tier)
 

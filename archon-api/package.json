@@ -11,6 +11,7 @@
     "@hono/node-server": "^1.19.9",
     "@octokit/graphql": "^9.0.3",
     "@octokit/rest": "^22.0.1",
+    "@opencode-ai/sdk": "file:../packages/sdk/js",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.12.3",
