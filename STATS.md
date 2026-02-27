@@ -26,19 +26,8 @@ bun run --cwd packages/opencode build --single
 
 
 
+cloudflared tunnel --url http://localhost:3000
 
 
 
 
-
-
-npx localtunnel --port 3000 --subdomain archon-pro-vedi
-
-
-
-
-
-
-The Trigger: A user installs archon-pro and comments on an issue.
-The API: Receives the webhook and says "Okay, I need to run the Archon Agent for this repo."
-The Dispatcher: Instead of making the user manually add a .yml file, the API will go into their repo and trigger it automatically.
