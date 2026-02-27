@@ -581,7 +581,16 @@ async function getUserPrompt(data: GitHubIssue | GitHubPullRequest) {
     return body // Fallback for workflow_dispatch where the keyword might be in the trigger comment but handled upstream
   })()
 
-  // Handle images
+  // Search for files
+  // ie. <img alt="Image" src="https://github.com/user-attachments/assets/xxxx" />
+  // ie. [api.json](https://github.com/user-attachments/files/21433810/api.json)
+  // ie. ![Image](https://github.com/user-attachments/assets/xxxx)
+  const mdMatches = prompt.matchAll(/!?\[.*?\]\((https:\/\/github\.com\/user-attachments\/[^)]+)\)/gi)
+  const tagMatches = prompt.matchAll(/<img .*?src="(https:\/\/github\.com\/user-attachments\/[^"]+)" \/>/gi)
+  const matches = [...mdMatches, ...tagMatches].sort((a, b) => a.index - b.index)
+  console.log(`Images found: ${matches.length}`)
+
+  // Download all images in parallel instead of sequentially
   const imgData: {
     filename: string
     mime: string
@@ -591,51 +600,65 @@ async function getUserPrompt(data: GitHubIssue | GitHubPullRequest) {
     replacement: string
   }[] = []
 
-  // Search for files
-  // ie. <img alt="Image" src="https://github.com/user-attachments/assets/xxxx" />
-  // ie. [api.json](https://github.com/user-attachments/files/21433810/api.json)
-  // ie. ![Image](https://github.com/user-attachments/assets/xxxx)
-  const mdMatches = prompt.matchAll(/!?\[.*?\]\((https:\/\/github\.com\/user-attachments\/[^)]+)\)/gi)
-  const tagMatches = prompt.matchAll(/<img .*?src="(https:\/\/github\.com\/user-attachments\/[^"]+)" \/>/gi)
-  const matches = [...mdMatches, ...tagMatches].sort((a, b) => a.index - b.index)
-  console.log("Images", JSON.stringify(matches, null, 2))
+  if (matches.length > 0) {
+    const downloads = await Promise.all(
+      matches.map(async (m) => {
+        const tag = m[0]
+        const url = m[1]
+        const start = m.index
 
-  let offset = 0
-  for (const m of matches) {
-    const tag = m[0]
-    const url = m[1]
-    const start = m.index
+        if (!url) return null
+        const filename = path.basename(url)
 
-    if (!url) continue
-    const filename = path.basename(url)
+        try {
+          const res = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/vnd.github.v3+json",
+            },
+          })
+          if (!res.ok) {
+            console.warn(`Failed to download image: ${url}`)
+            return null
+          }
 
-    // Download image
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    })
-    if (!res.ok) {
-      console.error(`Failed to download image: ${url}`)
-      continue
+          const contentType = res.headers.get("content-type")
+          return {
+            tag,
+            filename,
+            mime: contentType?.startsWith("image/") ? contentType : "text/plain",
+            content: Buffer.from(await res.arrayBuffer()).toString("base64"),
+            start,
+            replacement: `@${filename}`,
+          }
+        } catch (e) {
+          console.warn(`Error downloading ${url}:`, e)
+          return null
+        }
+      })
+    )
+
+    // Apply replacements in reverse order to maintain indices
+    let offset = 0
+    for (const m of matches) {
+      const download = downloads[matches.indexOf(m)]
+      if (!download) continue
+
+      const { tag, replacement, start } = download
+      prompt = prompt.slice(0, start + offset) + replacement + prompt.slice(start + offset + tag.length)
+      offset += replacement.length - tag.length
+
+      imgData.push({
+        filename: download.filename,
+        mime: download.mime,
+        content: download.content,
+        start,
+        end: start + replacement.length,
+        replacement,
+      })
     }
-
-    // Replace img tag with file path, ie. @image.png
-    const replacement = `@${filename}`
-    prompt = prompt.slice(0, start + offset) + replacement + prompt.slice(start + offset + tag.length)
-    offset += replacement.length - tag.length
-
-    const contentType = res.headers.get("content-type")
-    imgData.push({
-      filename,
-      mime: contentType?.startsWith("image/") ? contentType : "text/plain",
-      content: Buffer.from(await res.arrayBuffer()).toString("base64"),
-      start,
-      end: start + replacement.length,
-      replacement,
-    })
   }
+
   return { userPrompt: prompt, promptFiles: imgData }
 }
 
