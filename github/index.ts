@@ -814,11 +814,23 @@ async function chatDirect(text: string): Promise<string> {
         throw new Error(`Archon AI Error: ${errorMsg}`)
       }
 
+      // Try every possible response shape the opencode SDK might return
       const parts: any[] = responseData?.parts || responseData?.info?.parts || []
       const match = parts.findLast((p: any) => p.type === "text")
-      if (!match) throw new Error("chatDirect via opencode: no text part in response")
-      console.log(`[chatDirect] Got response via opencode server (${match.text.length} chars)`)
-      return match.text
+      if (match?.text) {
+        console.log(`[chatDirect] Got response via opencode server (${match.text.length} chars)`)
+        return match.text
+      }
+      // Fallback: try plain text fields
+      const textFallback = responseData?.text || responseData?.content || responseData?.message
+        || responseData?.info?.text || responseData?.info?.content
+      if (textFallback) {
+        console.log(`[chatDirect] Got response via opencode server fallback (${String(textFallback).length} chars)`)
+        return String(textFallback)
+      }
+      // Log the full shape and fall through to Groq
+      console.warn(`[chatDirect] Unexpected response shape:`, JSON.stringify(responseData)?.slice(0, 500))
+      throw new Error("chatDirect via opencode: no text part in response")
     } catch (e: any) {
       console.warn(`[chatDirect] Remote opencode server failed (${e.message}), falling back to Groq...`)
     }
