@@ -57,13 +57,15 @@ jobs:
       - name: Self Cleanup
         if: always()
         env:
-          TOKEN: \${{ github.token }}
+          GH_TOKEN: \${{ github.token }}
           REPO: \${{ github.repository }}
           REF: \${{ github.ref_name }}
         run: |
           git config --global user.name "archon-pro[bot]"
           git config --global user.email "archon-pro[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:\${TOKEN}@github.com/\${REPO}"
+          git config --global credential.helper store
+          echo "https://x-access-token:\${GH_TOKEN}@github.com" > ~/.git-credentials
+          git remote set-url origin "https://github.com/\${REPO}"
           rm -f .github/workflows/archon-managed.yml
           git add .github/workflows/archon-managed.yml
           git diff --cached --quiet && echo "Nothing to commit, skipping" || git commit -m "chore: cleanup temporary archon runner [skip ci]"

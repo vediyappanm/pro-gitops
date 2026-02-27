@@ -675,8 +675,7 @@ async function chat(text: string, files: PromptFiles = []) {
   const chat = await client.session.prompt<true>({
     path: { id: session.id },
     body: {
-      providerID,
-      modelID,
+      model: { providerID, modelID },
       agent,
       parts: [
         {
