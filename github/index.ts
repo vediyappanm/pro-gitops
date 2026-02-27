@@ -149,42 +149,77 @@ let lastTextResponse = ""
 let sessionCompleted = false
 type PromptFiles = Awaited<ReturnType<typeof getUserPrompt>>["promptFiles"]
 
+// Performance timing helper
+function perf(label: string) {
+  const start = Date.now()
+  return () => {
+    const elapsed = Date.now() - start
+    console.log(`[Perf] ${label}: ${elapsed}ms`)
+  }
+}
+
 try {
   assertContextEvent("issue_comment", "pull_request_review_comment", "workflow_dispatch")
   assertPayloadKeyword()
-  await assertArchonConnected()
 
-  accessToken = await getAccessToken()
+  const perfInit = perf("Total initialization")
+  
+  // Parallel initialization: token exchange + archon connection + repo/issue fetch
+  const perfParallel = perf("Parallel init (token + connection + repo)")
+  const [token, , repoData, isPr] = await Promise.all([
+    getAccessToken(),
+    assertArchonConnected(),
+    fetchRepo(),
+    Promise.resolve(isPullRequest()),
+  ])
+  perfParallel()
+  
+  accessToken = token
   octoRest = new Octokit({ auth: accessToken })
   octoGraph = graphql.defaults({
     headers: { authorization: `token ${accessToken}` },
   })
 
-  // Setup data first
-  const repoData = await fetchRepo()
-  const isPr = isPullRequest()
-  const issueOrPrData = isPr ? await fetchPR() : await fetchIssue()
-
-  const { userPrompt, promptFiles } = await getUserPrompt(issueOrPrData)
+  // Fetch issue/PR data in parallel with other operations
+  const perfIssueData = perf("Fetch issue/PR data")
+  const issueOrPrData = await (isPr ? fetchPR() : fetchIssue())
+  perfIssueData()
+  
+  const perfGit = perf("Configure git")
   await configureGit(accessToken)
-  await assertPermissions()
+  perfGit()
 
-  const comment = await createComment()
-  commentId = comment.data.id
+  // Create comment, assert permissions, and get user prompt in parallel
+  const perfCommentAndPrompt = perf("Comment + permissions + user prompt")
+  const [{ data: commentData }, , { userPrompt, promptFiles }] = await Promise.all([
+    createComment(),
+    assertPermissions(),
+    getUserPrompt(issueOrPrData),
+  ])
+  perfCommentAndPrompt()
+  commentId = commentData.id
 
-  // Setup opencode session
-  session = await client.session.create<true>().then((r) => r.data)
-  await subscribeSessionEvents()
-  shareId = await (async () => {
-    if (useEnvShare() === false) return
-    if (!useEnvShare() && repoData.data.private) return
+  // Create session and subscribe to events
+  const perfSession = perf("Create session + subscribe to events")
+  const sessionData = await client.session.create<true>().then((r) => r.data)
+  session = sessionData
+  
+  // Subscribe to events in background
+  subscribeSessionEvents()
+  perfSession()
+  
+  // Share session (only if public repo and sharing enabled)
+  if (useEnvShare() !== false && (useEnvShare() === true || !repoData.data.private)) {
     await client.session.share<true>({ path: { id: session.id } })
-    return session.id.slice(-8)
-  })()
+    shareId = session.id.slice(-8)
+  }
+  
   console.log("archon session", session.id)
   if (shareId) {
     console.log("Share link:", `${useShareUrl()}/s/${shareId}`)
   }
+  
+  perfInit()
 
   // Handle 3 cases
   // 1. Issue
@@ -354,6 +389,9 @@ function getReviewCommentContext() {
 async function assertArchonConnected() {
   let retry = 0
   let connected = false
+  const MAX_RETRIES = 30
+  const INITIAL_DELAY = 100 // Start with 100ms instead of 300ms
+  
   do {
     try {
       await client.app.log<true>({
@@ -366,11 +404,14 @@ async function assertArchonConnected() {
       connected = true
       break
     } catch (e) { }
-    await Bun.sleep(300)
-  } while (retry++ < 30)
+    
+    // Exponential backoff: 100ms, 150ms, 225ms, ...
+    const delay = INITIAL_DELAY * Math.pow(1.5, retry)
+    await Bun.sleep(Math.min(delay, 1000))
+  } while (retry++ < MAX_RETRIES)
 
   if (!connected) {
-    throw new Error("Failed to connect to archon server")
+    throw new Error("Failed to connect to archon server after 30 retries")
   }
 }
 
@@ -625,25 +666,26 @@ async function subscribeSessionEvents() {
   const decoder = new TextDecoder()
 
   console.log("Event stream connected, listening for tool execution logs...")
-  let text = ""
-    ; (async () => {
-      try {
-        while (true) {
-          try {
-            const { done, value } = await reader.read()
-            if (done) break
+  
+  // Start reading events asynchronously without blocking
+  (async () => {
+    try {
+      while (true) {
+        try {
+          const { done, value } = await reader.read()
+          if (done) break
 
-            const chunk = decoder.decode(value, { stream: true })
-            const lines = chunk.split("\n")
+          const chunk = decoder.decode(value, { stream: true })
+          const lines = chunk.split("\n")
 
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue
 
-              const jsonStr = line.slice(6).trim()
-              if (!jsonStr) continue
+            const jsonStr = line.slice(6).trim()
+            if (!jsonStr) continue
 
-              try {
-                const evt = JSON.parse(jsonStr)
+            try {
+              const evt = JSON.parse(jsonStr)
 
               if (evt.type === "message.part.updated") {
                 if (evt.properties.part.sessionID !== session.id) continue
@@ -691,7 +733,7 @@ async function subscribeSessionEvents() {
     } catch (e: any) {
       console.error("[EventStream] Fatal error:", e.message || e)
     }
-    })()
+  })()
 }
 
 async function summarize(response: string) {
@@ -733,6 +775,7 @@ async function resolveAgent(): Promise<string | undefined> {
 
 async function chat(text: string, files: PromptFiles = []) {
   console.log("Sending message to archon...")
+  const perfChat = perf("Remote Archon execution")
   const { providerID, modelID } = useEnvModel()
   const agent = await resolveAgent()
 
@@ -790,19 +833,29 @@ async function chat(text: string, files: PromptFiles = []) {
     console.log("Waiting for remote Archon to complete...")
     const start = Date.now()
     const TIMEOUT = 10 * 60 * 1000 // 10 minutes
+    
+    // Poll with exponential backoff: start at 100ms, max 2000ms
+    let pollInterval = 100
     while (!sessionCompleted && (Date.now() - start < TIMEOUT)) {
-      await new Promise(r => setTimeout(r, 1000))
-      // Check status via polling if events are slow
+      await new Promise(r => setTimeout(r, pollInterval))
+      
+      // Check status via polling
       const poll = await client.session.get<true>({ path: { id: session.id } }).catch(() => null)
       if (poll?.data?.status === "completed" || poll?.data?.status === "error") {
         sessionCompleted = true
         // @ts-ignore
         const lastPart = poll.data.parts?.findLast((p: any) => p.type === 'text')
         if (lastPart) lastTextResponse = lastPart.text
+        break
       }
+      
+      // Exponential backoff: increase interval up to 2 seconds
+      pollInterval = Math.min(pollInterval * 1.5, 2000)
     }
 
     if (!sessionCompleted) throw new Error("Remote Archon timed out after 10 minutes")
+    
+    perfChat()
     return lastTextResponse
   }
 
