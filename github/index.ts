@@ -703,17 +703,21 @@ async function chat(text: string, files: PromptFiles = []) {
     },
   })
 
-  // @ts-ignore
-  if (chat.data.info.error) {
-    // @ts-ignore
-    const errorMsg = chat.data.info.error.data?.message || chat.data.info.error.name
+  // @ts-ignore - handle both old (chat.data.info.error) and new (chat.data.error) SDK response shapes
+  const responseData = chat.data as any
+  const error = responseData?.info?.error || responseData?.error
+  if (error) {
+    const errorMsg = error.data?.message || error.message || error.name || JSON.stringify(error)
     throw new Error(`Archon AI Error: ${errorMsg}`)
   }
 
-  // @ts-ignore
-  const match = chat.data.parts.findLast((p) => p.type === "text")
+  // @ts-ignore - handle both old (chat.data.parts) and new response shapes
+  const parts: any[] = responseData?.parts || responseData?.info?.parts || []
+  console.log(`Response has ${parts.length} parts`)
+  const match = parts.findLast((p: any) => p.type === "text")
   if (!match) {
-    throw new Error(`Failed to parse the text response: ${JSON.stringify(chat.data, null, 2)}`)
+    console.error("Full response data:", JSON.stringify(responseData, null, 2))
+    throw new Error(`Failed to parse the text response: no text part found`)
   }
 
   return match.text

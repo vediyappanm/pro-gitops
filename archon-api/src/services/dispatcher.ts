@@ -59,17 +59,27 @@ jobs:
         env:
           GH_TOKEN: \${{ github.token }}
           REPO: \${{ github.repository }}
-          REF: \${{ github.ref_name }}
         run: |
-          git config --global user.name "archon-pro[bot]"
-          git config --global user.email "archon-pro[bot]@users.noreply.github.com"
-          git config --global credential.helper store
-          echo "https://x-access-token:\${GH_TOKEN}@github.com" > ~/.git-credentials
-          git remote set-url origin "https://github.com/\${REPO}"
-          rm -f .github/workflows/archon-managed.yml
-          git add .github/workflows/archon-managed.yml
-          git diff --cached --quiet && echo "Nothing to commit, skipping" || git commit -m "chore: cleanup temporary archon runner [skip ci]"
-          git push origin "\${REF}" || echo "Warning: push failed but workflow run is done"
+          echo "Deleting archon-managed.yml via GitHub API..."
+          FILE_PATH=".github/workflows/archon-managed.yml"
+          SHA=$(curl -s \
+            -H "Authorization: token \${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/\${REPO}/contents/\${FILE_PATH}" | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('sha',''))" 2>/dev/null || echo "")
+          if [ -n "\${SHA}" ]; then
+            curl -s -X DELETE \
+              -H "Authorization: token \${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/\${REPO}/contents/\${FILE_PATH}" \
+              -d "{\"message\":\"chore: cleanup archon managed workflow [skip ci]\",\"sha\":\"\${SHA}\"}" \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print('Deleted:', d.get('commit',{}).get('sha','unknown'))" \
+              || echo "Warning: API delete failed, will retry on next run"
+            echo "Cleanup complete."
+          else
+            echo "File already deleted or not found, skipping."
+          fi
 `
 
   try {
