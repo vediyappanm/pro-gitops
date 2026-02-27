@@ -867,15 +867,23 @@ async function chat(text: string, files: PromptFiles = []) {
     // Initial delay to ensure event stream subscription is ready
     await new Promise(r => setTimeout(r, 100))
     
-    // Poll with exponential backoff: start at 100ms, max 2000ms
+    // Strategy: Wait for event stream to signal completion (primary)
+    // Fallback to polling if event stream doesn't fire
     let pollInterval = 100
-    let lastPollTime = Date.now()
     let pollAttempts = 0
+    let lastEventTime = Date.now()
     
     while (!sessionCompleted && (Date.now() - start < TIMEOUT)) {
-      await new Promise(r => setTimeout(r, pollInterval))
+      await new Promise(r => setTimeout(r, Math.min(pollInterval, 1000)))
       
-      // Check status via polling with proper error handling
+      // Check if event stream has updated session (primary method)
+      if (sessionCompleted) {
+        console.log(`[EventStream] Session completed via event stream after ${Date.now() - start}ms`)
+        perfChat()
+        return lastTextResponse
+      }
+      
+      // Fallback: Poll API for status (secondary method)
       pollAttempts++
       const poll = await client.session.get<true>({ path: { id: session.id } }).catch((err) => {
         console.error(`[Poll #${pollAttempts}] API call failed: ${err?.message || err}`)
@@ -883,29 +891,39 @@ async function chat(text: string, files: PromptFiles = []) {
       })
       
       if (!poll?.data) {
-        console.error(`[Poll #${pollAttempts}] No session data returned (response: ${JSON.stringify(poll)})`)
-      } else if (poll.data.status === "completed" || poll.data.status === "error") {
-        console.log(`[Poll #${pollAttempts}] Session ${poll.data.status} after ${Date.now() - start}ms`)
-        sessionCompleted = true
-        // @ts-ignore
-        const lastPart = poll.data.parts?.findLast((p: any) => p.type === 'text')
-        if (lastPart) lastTextResponse = lastPart.text
-        break
+        console.error(`[Poll #${pollAttempts}] No session data returned`)
       } else {
+        // Try multiple paths for status (API response structure may vary)
+        const status = poll.data.status ?? poll.data?.info?.status ?? "unknown"
+        const parts = poll.data.parts ?? poll.data?.info?.parts ?? []
         const elapsed = Date.now() - start
-        if (elapsed % 5000 < pollInterval) {
-          console.log(`[Poll #${pollAttempts}] Session ${poll.data.status} (${elapsed}ms elapsed)`)
+        
+        if (status === "completed" || status === "error") {
+          console.log(`[Poll #${pollAttempts}] Session ${status} after ${elapsed}ms (${parts.length} parts)`)
+          sessionCompleted = true
+          // @ts-ignore
+          const lastPart = parts?.findLast((p: any) => p.type === 'text')
+          if (lastPart) lastTextResponse = lastPart.text
+          break
+        } else {
+          // Status is running/pending/undefined - that's normal, keep polling
+          if (pollAttempts === 1) {
+            console.log(`[Poll #${pollAttempts}] Session polling started, status=${status}, parts=${parts.length}`)
+          } else if (pollAttempts % 5 === 0) {
+            // Log progress every 5 polls (~10 seconds at backoff rate)
+            console.log(`[Poll #${pollAttempts}] Still waiting... status=${status}, parts=${parts.length}, elapsed=${elapsed}ms`)
+          }
         }
       }
       
       // Exponential backoff: increase interval up to 2 seconds
       pollInterval = Math.min(pollInterval * 1.5, 2000)
-      lastPollTime = Date.now()
+      lastEventTime = Date.now()
     }
 
     if (!sessionCompleted) {
       const elapsed = Date.now() - start
-      throw new Error(`Remote Archon timeout: session not completed after ${Math.round(elapsed / 1000)}s (${pollAttempts} polls). Session may still be processing.`)
+      throw new Error(`Remote Archon timeout: session not completed after ${Math.round(elapsed / 1000)}s (${pollAttempts} API polls, event stream may have failed). Check Archon server logs.`)
     }
     
     perfChat()
