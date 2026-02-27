@@ -164,21 +164,28 @@ try {
 
   const perfInit = perf("Total initialization")
   
-  // Parallel initialization: token exchange + archon connection + repo/issue fetch
-  const perfParallel = perf("Parallel init (token + connection + repo)")
-  const [token, , repoData, isPr] = await Promise.all([
+  // Step 1: Get token and connect to archon in parallel
+  const perfToken = perf("Get token + connect to archon")
+  const [token] = await Promise.all([
     getAccessToken(),
     assertArchonConnected(),
-    fetchRepo(),
-    Promise.resolve(isPullRequest()),
   ])
-  perfParallel()
+  perfToken()
   
+  // Step 2: Initialize Github clients
   accessToken = token
   octoRest = new Octokit({ auth: accessToken })
   octoGraph = graphql.defaults({
     headers: { authorization: `token ${accessToken}` },
   })
+
+  // Step 3: Fetch repo and check if PR in parallel
+  const perfParallel = perf("Parallel init (repo + isPr check)")
+  const [repoData, isPr] = await Promise.all([
+    fetchRepo(),
+    Promise.resolve(isPullRequest()),
+  ])
+  perfParallel()
 
   // Fetch issue/PR data in parallel with other operations
   const perfIssueData = perf("Fetch issue/PR data")
