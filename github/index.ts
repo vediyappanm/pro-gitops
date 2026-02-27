@@ -157,7 +157,12 @@ try {
     headers: { authorization: `token ${accessToken}` },
   })
 
-  const { userPrompt, promptFiles } = await getUserPrompt()
+  // Setup data first
+  const repoData = await fetchRepo()
+  const isPr = isPullRequest()
+  const issueOrPrData = isPr ? await fetchPR() : await fetchIssue()
+
+  const { userPrompt, promptFiles } = await getUserPrompt(issueOrPrData)
   await configureGit(accessToken)
   await assertPermissions()
 
@@ -165,7 +170,6 @@ try {
   commentId = comment.data.id
 
   // Setup opencode session
-  const repoData = await fetchRepo()
   session = await client.session.create<true>().then((r) => r.data)
   await subscribeSessionEvents()
   shareId = await (async () => {
@@ -188,8 +192,8 @@ try {
   // archon server's ~13k token system prompt overwhelming Groq free tier limits.
   const useDirectApi = useContext().eventName === "workflow_dispatch"
 
-  if (isPullRequest()) {
-    const prData = await fetchPR()
+  if (isPr) {
+    const prData = issueOrPrData as GitHubPullRequest
     // Local PR
     if (prData.headRepository.nameWithOwner === prData.baseRepository.nameWithOwner) {
       await checkoutLocalBranch(prData)
@@ -222,7 +226,7 @@ try {
   // Issue
   else {
     const branch = await checkoutNewBranch()
-    const issueData = await fetchIssue()
+    const issueData = issueOrPrData as GitHubIssue
     const dataPrompt = buildPromptDataForIssue(issueData)
     let response: string
 
@@ -490,17 +494,13 @@ async function createComment() {
   })
 }
 
-async function getUserPrompt() {
+async function getUserPrompt(data: GitHubIssue | GitHubPullRequest) {
   const context = useContext()
+  const commentId = useCommentId()
 
-  // For workflow_dispatch, there is no comment payload — return early with a default prompt
-  if (context.eventName === "workflow_dispatch") {
-    return { userPrompt: "Summarize this issue and suggest next steps.", promptFiles: [] }
-  }
-
-  const payload = context.payload as IssueCommentEvent | PullRequestReviewCommentEvent
+  const triggerComment = data.comments.nodes.find(c => c.databaseId === commentId)
+  const body = (triggerComment?.body || data.body).trim()
   const reviewContext = getReviewCommentContext()
-  const body = payload.comment.body.trim()
 
   let prompt = (() => {
     if (body === "/archon" || body === "/ac" || body === "/opencode" || body === "/oc") {
@@ -515,7 +515,7 @@ async function getUserPrompt() {
       }
       return body
     }
-    throw new Error("Comments must mention `/archon`, `/ac`, `/opencode`, or `/oc`")
+    return body // Fallback for workflow_dispatch where the keyword might be in the trigger comment but handled upstream
   })()
 
   // Handle images
