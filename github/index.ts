@@ -767,82 +767,22 @@ async function chat(text: string, files: PromptFiles = []) {
   return match.text
 }
 
-// chatDirect — routes through your local opencode server via ARCHON_API_URL (Cloudflare tunnel).
-// Falls back to Groq only if ARCHON_API_URL is not set (for backward compatibility).
+// chatDirect — calls Groq directly for fast, free AI responses.
+// The opencode SDK remote path (session.prompt) returns {} because the server uses SSE streaming,
+// not blocking HTTP. So we go straight to Groq which is synchronous and reliable.
 async function chatDirect(text: string): Promise<string> {
-  const archonApiUrl = process.env.ARCHON_API_URL
+  const groqKey = process.env.GROQ_API_KEY
+  if (!groqKey) throw new Error("GROQ_API_KEY is not set — cannot call Groq directly")
 
-  // Hard cap to keep total tokens low
-  const MAX_CHARS = 3_000
+  // Hard cap: keep under Groq TPM limits (llama-3.1-8b-instant: ~30k TPM)
+  const MAX_CHARS = 4_000
   const truncatedText = text.length > MAX_CHARS
     ? text.slice(0, MAX_CHARS) + "\n\n[... context truncated to fit token limits]"
     : text
 
-  // ── PATH 1: Try local opencode server via Cloudflare tunnel ──
-  if (archonApiUrl) {
-    try {
-      console.log(`[chatDirect] Trying local opencode server at ${archonApiUrl}`)
-      const { createArchonClient } = await import("@opencode-ai/sdk")
-      const remoteClient = createArchonClient({ baseUrl: archonApiUrl, throwOnError: true })
-
-      // Create a fresh session on the remote opencode server
-      const sessionRes = await remoteClient.session.create<true>()
-      const remoteSession = sessionRes.data
-
-      // Determine model from MODEL env or fall back
-      let providerID = "groq"
-      let modelID = "llama-3.1-8b-instant"
-      try {
-        const parsed = useEnvModel()
-        providerID = parsed.providerID
-        modelID = parsed.modelID
-      } catch (_) { }
-
-      console.log(`[chatDirect] Prompting ${providerID}/${modelID} on remote opencode server...`)
-      const chatRes = await remoteClient.session.prompt<true>({
-        path: { id: remoteSession.id },
-        body: {
-          model: { providerID, modelID },
-          parts: [{ type: "text", text: truncatedText }],
-        },
-      })
-
-      const responseData = chatRes.data as any
-      const error = responseData?.info?.error || responseData?.error
-      if (error) {
-        const errorMsg = error.data?.message || error.message || error.name || JSON.stringify(error)
-        throw new Error(`Archon AI Error: ${errorMsg}`)
-      }
-
-      // Try every possible response shape the opencode SDK might return
-      const parts: any[] = responseData?.parts || responseData?.info?.parts || []
-      const match = parts.findLast((p: any) => p.type === "text")
-      if (match?.text) {
-        console.log(`[chatDirect] Got response via opencode server (${match.text.length} chars)`)
-        return match.text
-      }
-      // Fallback: try plain text fields
-      const textFallback = responseData?.text || responseData?.content || responseData?.message
-        || responseData?.info?.text || responseData?.info?.content
-      if (textFallback) {
-        console.log(`[chatDirect] Got response via opencode server fallback (${String(textFallback).length} chars)`)
-        return String(textFallback)
-      }
-      // Log the full shape and fall through to Groq
-      console.warn(`[chatDirect] Unexpected response shape:`, JSON.stringify(responseData)?.slice(0, 500))
-      throw new Error("chatDirect via opencode: no text part in response")
-    } catch (e: any) {
-      console.warn(`[chatDirect] Remote opencode server failed (${e.message}), falling back to Groq...`)
-    }
-  }
-
-  // ── PATH 2: Fallback — Groq direct API (no ARCHON_API_URL set) ──
-  const groqKey = process.env.GROQ_API_KEY
-  if (!groqKey) throw new Error("Neither ARCHON_API_URL nor GROQ_API_KEY is set — cannot proceed")
-
-  const modelEnv = process.env.MODEL || "groq/llama-3.1-8b-instant"
-  const modelId = modelEnv.includes("/") ? modelEnv.split("/").slice(1).join("/") : modelEnv
-  console.log(`[chatDirect] Fallback: calling groq/${modelId} directly (${truncatedText.length} chars input)`)
+  // Always use llama-3.1-8b-instant (small, free, fast, ~1500 tokens per call)
+  const modelId = "llama-3.1-8b-instant"
+  console.log(`[chatDirect] Calling groq/${modelId} (${truncatedText.length} chars input)`)
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -855,20 +795,31 @@ async function chatDirect(text: string): Promise<string> {
       messages: [
         {
           role: "system",
-          content: `You are Archon, a world-class AI software engineer.
-COMMAND: Follow the user's latest request EXACTLY.
-STRICT RULE: Do NOT create or modify files in the '.github/workflows/' directory unless specifically asked to by the user.
-If you are asked to create or modify a file, use this format:
-FILE: path/to/file.ext
-\`\`\`
-content
-\`\`\`
-Otherwise, respond with helpful text.`,
+          content: `You are Archon, a world-class AI software engineer and code reviewer.
+
+Your job is to help developers by:
+- Analyzing and reviewing code in Pull Requests
+- Identifying bugs, security issues, and performance problems
+- Suggesting concrete improvements with code examples
+- Fixing issues when asked
+- Explaining complex code clearly
+
+RULES:
+- Be specific and actionable — give real code, not vague advice
+- When asked to analyze a project, list concrete findings with severity (🔴 Critical / 🟡 Warning / 🟢 Suggestion)
+- When asked to fix or create a file, use this EXACT format so the bot can write it:
+  FILE: path/to/file.ext
+  \`\`\`language
+  full file content here
+  \`\`\`
+- NEVER modify files in '.github/workflows/' unless explicitly asked
+- Keep responses focused and under 1500 words
+- Use markdown formatting for readability`,
         },
         { role: "user", content: truncatedText },
       ],
-      max_tokens: 1000,
-      temperature: 0.1,
+      max_tokens: 2000,
+      temperature: 0.2,
     }),
   })
 
