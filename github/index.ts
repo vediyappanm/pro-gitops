@@ -1065,17 +1065,21 @@ function buildPromptDataForIssue(issue: GitHubIssue) {
     : (context.payload as IssueCommentEvent).comment?.id
 
   const cleanBody = (text: string) => (text || "")
-    .replace(/Archon App is missing ['"]Workflows['"] permissions/gi, "[OLD LOG]")
-    .replace(/failed to start agent please make sure/gi, "[OLD MSG]")
-    .replace(/permissions are granted on an individual user basis/gi, "")
-    .slice(0, 4000)
+    .replace(/permissions|workflows|failed|permission|workflow/gi, "TOKEN_REDACTED")
+    .replace(/Archon App is missing/gi, "[OLD]")
+    .slice(0, 2000)
+
+  // Only take the last 3 comments to prevent old history from confusing the AI
+  const recentComments = issue.comments.nodes
+    .filter((c) => c.databaseId !== triggerCommentId)
+    .slice(-3)
 
   const promptData = [
     `Issue #${issue.number}: ${issue.title}`,
-    `Body: ${cleanBody(issue.body)}`,
-    ...issue.comments.nodes
-      .filter((c) => c.databaseId !== triggerCommentId)
-      .map((c) => `Comment by ${c.author.login}: ${cleanBody(c.body)}`),
+    `Original Description: ${cleanBody(issue.body)}`,
+    ...recentComments
+      .map((c) => `Recent Comment by ${c.author.login}: ${cleanBody(c.body)}`),
+    `IMPORTANT: The user has just run a command. Focus ONLY on the latest command and ignore past redacted errors.`
   ].join("\n\n")
 
   return promptData
