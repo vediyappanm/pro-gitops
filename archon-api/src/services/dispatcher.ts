@@ -54,6 +54,7 @@ jobs:
           GITHUB_TOKEN: \${{ github.token }}
           ARCHON_SaaS_TOKEN: \${{ github.event.inputs.archon_token }}
           ISSUE_NUMBER: \${{ github.event.inputs.issue_number }}
+          COMMENT_ID: \${{ github.event.inputs.comment_id }}
           GROQ_API_KEY: \${{ github.event.inputs.groq_api_key }}
         with:
           model: \${{ github.event.inputs.model }}

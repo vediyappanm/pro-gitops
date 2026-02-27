@@ -428,8 +428,17 @@ function useIssueId() {
     const issueNum = process.env.ISSUE_NUMBER
     if (issueNum) return parseInt(issueNum)
   }
-  const payload = context.payload as IssueCommentEvent
-  return payload.issue.number
+  const payload = context.payload as any
+  return payload.issue?.number || payload.pull_request?.number
+}
+
+function useCommentId() {
+  const context = useContext()
+  if (context.eventName === "workflow_dispatch") {
+    const commentId = process.env.COMMENT_ID
+    if (commentId) return parseInt(commentId)
+  }
+  return (context.payload as IssueCommentEvent).comment?.id
 }
 
 function useShareUrl() {
@@ -1060,9 +1069,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
 function buildPromptDataForIssue(issue: GitHubIssue) {
   const context = useContext()
-  const triggerCommentId = context.eventName === "workflow_dispatch"
-    ? null
-    : (context.payload as IssueCommentEvent).comment?.id
+  const triggerCommentId = useCommentId()
 
   const triggerComment = issue.comments.nodes.find(c => c.databaseId === triggerCommentId)
   const lastPrompt = triggerComment?.body || issue.body
