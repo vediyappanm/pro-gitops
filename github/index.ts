@@ -864,26 +864,49 @@ async function chat(text: string, files: PromptFiles = []) {
     const start = Date.now()
     const TIMEOUT = 10 * 60 * 1000 // 10 minutes
     
+    // Initial delay to ensure event stream subscription is ready
+    await new Promise(r => setTimeout(r, 100))
+    
     // Poll with exponential backoff: start at 100ms, max 2000ms
     let pollInterval = 100
+    let lastPollTime = Date.now()
+    let pollAttempts = 0
+    
     while (!sessionCompleted && (Date.now() - start < TIMEOUT)) {
       await new Promise(r => setTimeout(r, pollInterval))
       
-      // Check status via polling
-      const poll = await client.session.get<true>({ path: { id: session.id } }).catch(() => null)
-      if (poll?.data?.status === "completed" || poll?.data?.status === "error") {
+      // Check status via polling with proper error handling
+      pollAttempts++
+      const poll = await client.session.get<true>({ path: { id: session.id } }).catch((err) => {
+        console.error(`[Poll #${pollAttempts}] API call failed: ${err?.message || err}`)
+        return null
+      })
+      
+      if (!poll?.data) {
+        console.error(`[Poll #${pollAttempts}] No session data returned (response: ${JSON.stringify(poll)})`)
+      } else if (poll.data.status === "completed" || poll.data.status === "error") {
+        console.log(`[Poll #${pollAttempts}] Session ${poll.data.status} after ${Date.now() - start}ms`)
         sessionCompleted = true
         // @ts-ignore
         const lastPart = poll.data.parts?.findLast((p: any) => p.type === 'text')
         if (lastPart) lastTextResponse = lastPart.text
         break
+      } else {
+        const elapsed = Date.now() - start
+        if (elapsed % 5000 < pollInterval) {
+          console.log(`[Poll #${pollAttempts}] Session ${poll.data.status} (${elapsed}ms elapsed)`)
+        }
       }
       
       // Exponential backoff: increase interval up to 2 seconds
       pollInterval = Math.min(pollInterval * 1.5, 2000)
+      lastPollTime = Date.now()
     }
 
-    if (!sessionCompleted) throw new Error("Remote Archon timed out after 10 minutes")
+    if (!sessionCompleted) {
+      const elapsed = Date.now() - start
+      throw new Error(`Remote Archon timeout: session not completed after ${Math.round(elapsed / 1000)}s (${pollAttempts} polls). Session may still be processing.`)
+    }
     
     perfChat()
     return lastTextResponse
