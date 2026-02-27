@@ -8,11 +8,11 @@ export interface ModelConfig {
 
 const MODEL_TIERS: Record<string, ModelConfig> = {
     free: {
-        provider: "groq",
-        modelId: "llama-3.3-70b-versatile",
-        apiKey: process.env.GROQ_API_KEY || "",
-        maxTokens: 2048,
-        tpmLimit: 30000,
+        provider: "opencode",
+        modelId: "claude-3-5-sonnet-20241022",
+        apiKey: "",
+        maxTokens: 8192,
+        tpmLimit: 100000,
     },
     pro: {
         provider: "anthropic",
