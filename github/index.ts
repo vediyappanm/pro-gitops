@@ -957,13 +957,16 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }
 
 function buildPromptDataForIssue(issue: GitHubIssue) {
-  const payload = useContext().payload as IssueCommentEvent
+  const context = useContext()
+  const triggerCommentId = context.eventName === "workflow_dispatch"
+    ? null
+    : (context.payload as IssueCommentEvent).comment?.id
 
   const MAX_COMMENTS = 5
   const comments = (issue.comments?.nodes || [])
     .filter((c: any) => {
       const id = parseInt(c.databaseId)
-      return id !== commentId && id !== payload.comment.id
+      return id !== commentId && id !== triggerCommentId
     })
     .slice(-MAX_COMMENTS) // keep only the most recent
     .map((c: any) => `  - ${c.author.login}: ${truncate(c.body, 150)}`)

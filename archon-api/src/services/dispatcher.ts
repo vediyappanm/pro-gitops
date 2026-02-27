@@ -6,20 +6,16 @@ export async function dispatchAgent(installationId: number, payload: any, plan: 
   const octokit = new Octokit({ auth: token })
 
   const { owner, name: repo } = payload.repository
-  const issue_number = payload.issue ? payload.issue.number : payload.pull_request.number
-  const comment_id = payload.comment.id
+  const issue_number = payload.issue ? payload.issue.number : payload.pull_request?.number
+  const comment_id = payload.comment?.id
 
   const model = plan.tier === 'pro' ? 'anthropic/claude-3-5-sonnet' : 'groq/llama-3.3-70b-versatile'
   const workflowPath = '.github/workflows/archon-managed.yml'
 
-  try {
-    // 1. Check if workflow exists
-    try {
-      await octokit.repos.getContent({ owner: owner.login, repo, path: workflowPath })
-    } catch (e) {
-      console.log("Infecting managed workflow into repo...")
-      // 2. Inject the workflow if missing
-      const workflowContent = `name: archon-managed
+  // The workflow content injected into the target repo.
+  // KEY: Uses ${TOKEN} bash variable (not ${{ github.token }} expression) inside git remote set-url
+  // to avoid shell-escaping issues. TOKEN is passed as an env var to the step.
+  const workflowContent = `name: archon-managed
 on:
   workflow_dispatch:
     inputs:
@@ -28,13 +24,13 @@ on:
         required: true
       comment_id:
         description: 'Comment ID'
-        required: true
+        required: false
       model:
         description: 'AI Model'
         required: true
       archon_token:
         description: 'SaaS Token'
-        required: true
+        required: false
 
 jobs:
   archon:
@@ -43,6 +39,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,40 +57,66 @@ jobs:
       - name: Self Cleanup
         if: always()
         env:
-          GITHUB_TOKEN: \${{ github.token }}
+          TOKEN: \${{ github.token }}
+          REPO: \${{ github.repository }}
+          REF: \${{ github.ref_name }}
         run: |
           git config --global user.name "archon-pro[bot]"
           git config --global user.email "archon-pro[bot]@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:\${{ github.token }}@github.com/\${{ github.repository }}
+          git remote set-url origin "https://x-access-token:\${TOKEN}@github.com/\${REPO}"
           rm -f .github/workflows/archon-managed.yml
           git add .github/workflows/archon-managed.yml
-          git diff --cached --quiet || git commit -m "chore: cleanup temporary archon runner [skip ci]"
-          git push origin \${{ github.ref_name }}
-`;
-      await octokit.repos.createOrUpdateFileContents({
+          git diff --cached --quiet && echo "Nothing to commit, skipping" || git commit -m "chore: cleanup temporary archon runner [skip ci]"
+          git push origin "\${REF}" || echo "Warning: push failed but workflow run is done"
+`
+
+  try {
+    // Always force-delete and re-inject so we NEVER reuse a stale/broken workflow file
+    try {
+      const existing = await octokit.repos.getContent({ owner: owner.login, repo, path: workflowPath })
+      const existingSha = (existing.data as any).sha
+      console.log("Existing workflow found, deleting to re-inject fresh version...")
+      await octokit.repos.deleteFile({
         owner: owner.login,
         repo,
         path: workflowPath,
-        message: "chore: add archon managed workflow",
-        content: Buffer.from(workflowContent).toString('base64'),
+        message: "chore: refresh archon managed workflow",
+        sha: existingSha,
       })
-      // Wait a sec for GitHub to register the new workflow
-      await new Promise(r => setTimeout(r, 2000))
+      await new Promise(r => setTimeout(r, 1500))
+    } catch (e: any) {
+      if (e.status !== 404) {
+        console.log("Note: Could not delete existing workflow:", e.message)
+      }
     }
 
-    // 3. Trigger the workflow
+    console.log("Injecting fresh managed workflow into repo...")
+    await octokit.repos.createOrUpdateFileContents({
+      owner: owner.login,
+      repo,
+      path: workflowPath,
+      message: "chore: add archon managed workflow",
+      content: Buffer.from(workflowContent).toString('base64'),
+    })
+
+    // Wait for GitHub to register the new workflow file
+    await new Promise(r => setTimeout(r, 3000))
+
+    // Trigger the workflow via workflow_dispatch
+    console.log(`Triggering archon-managed.yml on ${owner.login}/${repo}...`)
     await octokit.actions.createWorkflowDispatch({
       owner: owner.login,
       repo,
       workflow_id: 'archon-managed.yml',
       ref: payload.repository.default_branch,
       inputs: {
-        issue_number: issue_number.toString(),
-        comment_id: comment_id.toString(),
+        issue_number: (issue_number ?? '').toString(),
+        comment_id: (comment_id ?? '').toString(),
         model: model,
         archon_token: Buffer.from(JSON.stringify({ orgId: owner.id })).toString('base64')
       }
     })
+    console.log("✅ Agent dispatched successfully!")
     return true
   } catch (error: any) {
     console.error("Failed to dispatch agent:", error.message)
