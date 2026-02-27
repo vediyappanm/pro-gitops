@@ -856,48 +856,63 @@ async function chat(text: string, files: PromptFiles = []) {
     throw new Error(`Archon AI Error: ${errorMsg}`)
   }
 
-  // If we are using a remote server (ARCHON_API_URL set), the above call returned 
+  // If we are using a remote server (ARCHON_API_URL set), the above call returned
   // immediately due to SSE. We need to wait for sessionCompleted via the event stream.
   const isRemote = Boolean(process.env["ARCHON_API_URL"])
   if (isRemote) {
     console.log("Waiting for remote Archon to complete...")
     const start = Date.now()
-    const TIMEOUT = 10 * 60 * 1000 // 10 minutes
-    
+    const EVENT_STREAM_TIMEOUT = 30 * 1000 // 30 seconds for event stream
+    const TOTAL_TIMEOUT = 10 * 60 * 1000 // 10 minutes total
+
     // Initial delay to ensure event stream subscription is ready
     await new Promise(r => setTimeout(r, 100))
-    
+
     // Strategy: Wait for event stream to signal completion (primary)
     // Fallback to polling if event stream doesn't fire
-    let pollInterval = 100
+    let pollInterval = 200
     let pollAttempts = 0
-    let lastEventTime = Date.now()
-    
-    while (!sessionCompleted && (Date.now() - start < TIMEOUT)) {
+    let noDataCount = 0
+    const MAX_NO_DATA = 3 // Fail faster if API consistently returns no data
+
+    while (!sessionCompleted && (Date.now() - start < TOTAL_TIMEOUT)) {
       await new Promise(r => setTimeout(r, Math.min(pollInterval, 1000)))
-      
+
       // Check if event stream has updated session (primary method)
       if (sessionCompleted) {
         console.log(`[EventStream] Session completed via event stream after ${Date.now() - start}ms`)
         perfChat()
         return lastTextResponse
       }
-      
+
+      // If event stream hasn't signaled after 30s and we have no API data, fail fast
+      if (Date.now() - start > EVENT_STREAM_TIMEOUT && noDataCount > 0) {
+        const elapsed = Date.now() - start
+        throw new Error(`Remote Archon: No session data received for ${Math.round(elapsed / 1000)}s. Event stream may have failed. ARCHON_API_URL: ${process.env["ARCHON_API_URL"]}`)
+      }
+
       // Fallback: Poll API for status (secondary method)
       pollAttempts++
       const poll = await client.session.get<true>({ path: { id: session.id } }).catch((err) => {
         console.error(`[Poll #${pollAttempts}] API call failed: ${err?.message || err}`)
         return null
       })
-      
+
       if (!poll?.data) {
-        console.error(`[Poll #${pollAttempts}] No session data returned`)
+        noDataCount++
+        if (noDataCount === 1 || noDataCount === MAX_NO_DATA) {
+          console.error(`[Poll #${pollAttempts}] No session data returned (${noDataCount}/${MAX_NO_DATA})`)
+        }
+        if (noDataCount >= MAX_NO_DATA) {
+          throw new Error(`Remote Archon API returned no data ${MAX_NO_DATA}+ times. Server may be down or session ID invalid.`)
+        }
       } else {
+        noDataCount = 0 // Reset counter on successful API response
         // Try multiple paths for status (API response structure may vary)
         const status = poll.data.status ?? poll.data?.info?.status ?? "unknown"
         const parts = poll.data.parts ?? poll.data?.info?.parts ?? []
         const elapsed = Date.now() - start
-        
+
         if (status === "completed" || status === "error") {
           console.log(`[Poll #${pollAttempts}] Session ${status} after ${elapsed}ms (${parts.length} parts)`)
           sessionCompleted = true
@@ -906,7 +921,7 @@ async function chat(text: string, files: PromptFiles = []) {
           if (lastPart) lastTextResponse = lastPart.text
           break
         } else {
-          // Status is running/pending/undefined - that's normal, keep polling
+          // Status is running/pending/unknown - that's normal, keep polling
           if (pollAttempts === 1) {
             console.log(`[Poll #${pollAttempts}] Session polling started, status=${status}, parts=${parts.length}`)
           } else if (pollAttempts % 5 === 0) {
@@ -915,17 +930,16 @@ async function chat(text: string, files: PromptFiles = []) {
           }
         }
       }
-      
+
       // Exponential backoff: increase interval up to 2 seconds
       pollInterval = Math.min(pollInterval * 1.5, 2000)
-      lastEventTime = Date.now()
     }
 
     if (!sessionCompleted) {
       const elapsed = Date.now() - start
-      throw new Error(`Remote Archon timeout: session not completed after ${Math.round(elapsed / 1000)}s (${pollAttempts} API polls, event stream may have failed). Check Archon server logs.`)
+      throw new Error(`Remote Archon timeout: session not completed after ${Math.round(elapsed / 1000)}s (${pollAttempts} API polls, event stream may have failed). Check Archon server logs at ${process.env["ARCHON_API_URL"]}`)
     }
-    
+
     perfChat()
     return lastTextResponse
   }
