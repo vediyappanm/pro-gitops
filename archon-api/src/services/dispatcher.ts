@@ -32,7 +32,13 @@ on:
         description: 'SaaS Token'
         required: false
       groq_api_key:
-        description: 'Groq API Key for AI model access'
+        description: 'Groq API Key'
+        required: false
+      anthropic_api_key:
+        description: 'Anthropic API Key'
+        required: false
+      openai_api_key:
+        description: 'OpenAI API Key'
         required: false
 
 jobs:
@@ -56,6 +62,8 @@ jobs:
           ISSUE_NUMBER: \${{ github.event.inputs.issue_number }}
           COMMENT_ID: \${{ github.event.inputs.comment_id }}
           GROQ_API_KEY: \${{ github.event.inputs.groq_api_key }}
+          ANTHROPIC_API_KEY: \${{ github.event.inputs.anthropic_api_key }}
+          OPENAI_API_KEY: \${{ github.event.inputs.openai_api_key }}
         with:
           model: \${{ github.event.inputs.model }}
 
@@ -131,6 +139,8 @@ jobs:
         comment_id: (comment_id ?? '').toString(),
         model: model,
         groq_api_key: process.env.GROQ_API_KEY || '',
+        anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
+        openai_api_key: process.env.OPENAI_API_KEY || '',
         archon_token: Buffer.from(JSON.stringify({ orgId: owner.id })).toString('base64')
       }
     })

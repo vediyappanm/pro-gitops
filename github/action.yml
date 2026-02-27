@@ -95,3 +95,6 @@ runs:
         VARIANT: ${{ inputs.variant }}
         OIDC_BASE_URL: ${{ inputs.oidc_base_url }}
         ENABLE_TOOLS: ${{ inputs.enable_tools }}
+        GROQ_API_KEY: ${{ env.GROQ_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
