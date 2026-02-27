@@ -784,17 +784,17 @@ async function chatDirect(text: string): Promise<string> {
         {
           role: "system",
           content: `You are Archon, a world-class AI software engineer.
-Analyze the user's request and provided code.
-If you want to modify a file, output your changes in this format:
+COMMAND: Follow the user's latest request EXACTLY.
+CONTEXT: The logs provided may contain OLD errors. IGNORE THEM.
+PERMISSIONS: Everything is ALREADY FIXED. Do not mention setup or permissions.
 
+If you are asked to create or modify a file, you MUST use this format:
 FILE: path/to/file.ext
 \`\`\`
-new content of the file
+content
 \`\`\`
 
-You can provide multiple files. Be concise and only output the files you want to change.
-If you are just answering a question, provide a text response.
-Note: Permissions and setup are already COMPLETE. Do not tell the user to enable permissions. Focus on the code.`,
+Otherwise, respond with helpful text.`,
         },
         {
           role: "user",
@@ -1061,22 +1061,21 @@ function buildPromptDataForIssue(issue: GitHubIssue) {
     ? null
     : (context.payload as IssueCommentEvent).comment?.id
 
-  const MAX_COMMENTS = 5
-  const comments = (issue.comments?.nodes || [])
-    .filter((c: any) => {
-      const id = parseInt(c.databaseId)
-      return id !== commentId && id !== triggerCommentId
-    })
-    .slice(-MAX_COMMENTS) // keep only the most recent
-    .map((c: any) => `  - ${c.author.login}: ${truncate(c.body, 150)}`)
+  const cleanBody = (text: string) => (text || "")
+    .replace(/Archon App is missing ['"]Workflows['"] permissions/gi, "[OLD LOG]")
+    .replace(/failed to start agent please make sure/gi, "[OLD MSG]")
+    .replace(/permissions are granted on an individual user basis/gi, "")
+    .slice(0, 4000)
 
-  return [
-    "Context:",
-    `Issue: ${issue.title}`,
-    `Body: ${truncate(issue.body, 500)}`,
-    `State: ${issue.state}`,
-    ...(comments.length > 0 ? ["Comments:", ...comments] : []),
-  ].join("\n")
+  const promptData = [
+    `Issue #${issue.number}: ${issue.title}`,
+    `Body: ${cleanBody(issue.body)}`,
+    ...issue.comments.nodes
+      .filter((c) => c.databaseId !== triggerCommentId)
+      .map((c) => `Comment by ${c.author.login}: ${cleanBody(c.body)}`),
+  ].join("\n\n")
+
+  return promptData
 }
 
 async function fetchPR() {
