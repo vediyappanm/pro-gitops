@@ -28,6 +28,7 @@ bun run --cwd packages/opencode build --single
 
 cloudflared tunnel --url http://localhost:3000
 
+cloudflared tunnel --url http://localhost:4096
 
 
 
