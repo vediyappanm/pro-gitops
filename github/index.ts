@@ -767,16 +767,10 @@ async function chat(text: string, files: PromptFiles = []) {
   return match.text
 }
 
-// Direct Groq API call — bypasses archon server entirely for workflow_dispatch events.
-// The archon server's system prompt + tool definitions cost ~13,000–14,000 tokens,
-// which exceeds every Groq free tier model's TPM limit. Direct call uses ~1,500 tokens total.
+// chatDirect — routes through your local opencode server via ARCHON_API_URL (Cloudflare tunnel).
+// Falls back to Groq only if ARCHON_API_URL is not set (for backward compatibility).
 async function chatDirect(text: string): Promise<string> {
-  const groqKey = process.env.GROQ_API_KEY
-  if (!groqKey) throw new Error("GROQ_API_KEY env var not set — cannot call Groq directly")
-
-  const modelEnv = process.env.MODEL || "groq/llama-3.1-8b-instant"
-  // Strip provider prefix: "groq/llama-3.1-8b-instant" → "llama-3.1-8b-instant"
-  const modelId = modelEnv.includes("/") ? modelEnv.split("/").slice(1).join("/") : modelEnv
+  const archonApiUrl = process.env.ARCHON_API_URL
 
   // Hard cap to keep total tokens low
   const MAX_CHARS = 3_000
@@ -784,7 +778,64 @@ async function chatDirect(text: string): Promise<string> {
     ? text.slice(0, MAX_CHARS) + "\n\n[... context truncated to fit token limits]"
     : text
 
-  console.log(`[chatDirect] Calling groq/${modelId} directly (${truncatedText.length} chars input)`)
+  // ── PATH 1: Use local opencode server via Cloudflare tunnel ──
+  if (archonApiUrl) {
+    console.log(`[chatDirect] Using local opencode server at ${archonApiUrl}`)
+    const { createArchonClient } = await import("@opencode-ai/sdk")
+    const remoteClient = createArchonClient({ baseUrl: archonApiUrl, throwOnError: true })
+
+    // Create a fresh session on the remote opencode server
+    const sessionRes = await remoteClient.session.create<true>()
+    const remoteSession = sessionRes.data
+
+    // Determine model: parse MODEL env or fall back to opencode provider defaults
+    let providerID = "anthropic"
+    let modelID = "claude-3-5-sonnet-20241022"
+    try {
+      const parsed = useEnvModel()
+      // If MODEL is in "opencode/..." format, pass provider+model, else use opencode defaults
+      if (parsed.providerID === "opencode") {
+        // Let the server pick the default model; just pass the server's registered provider
+        providerID = "opencode"
+        modelID = parsed.modelID
+      } else {
+        providerID = parsed.providerID
+        modelID = parsed.modelID
+      }
+    } catch (_) {
+      // MODEL env not set — fall back to anthropic claude
+    }
+
+    console.log(`[chatDirect] Prompting ${providerID}/${modelID} on remote opencode server...`)
+    const chatRes = await remoteClient.session.prompt<true>({
+      path: { id: remoteSession.id },
+      body: {
+        model: { providerID, modelID },
+        parts: [{ type: "text", text: truncatedText }],
+      },
+    })
+
+    const responseData = chatRes.data as any
+    const error = responseData?.info?.error || responseData?.error
+    if (error) {
+      const errorMsg = error.data?.message || error.message || error.name || JSON.stringify(error)
+      throw new Error(`Archon AI Error: ${errorMsg}`)
+    }
+
+    const parts: any[] = responseData?.parts || responseData?.info?.parts || []
+    const match = parts.findLast((p: any) => p.type === "text")
+    if (!match) throw new Error("chatDirect via opencode: no text part in response")
+    console.log(`[chatDirect] Got response via opencode server (${match.text.length} chars)`)
+    return match.text
+  }
+
+  // ── PATH 2: Fallback — Groq direct API (no ARCHON_API_URL set) ──
+  const groqKey = process.env.GROQ_API_KEY
+  if (!groqKey) throw new Error("Neither ARCHON_API_URL nor GROQ_API_KEY is set — cannot proceed")
+
+  const modelEnv = process.env.MODEL || "groq/llama-3.1-8b-instant"
+  const modelId = modelEnv.includes("/") ? modelEnv.split("/").slice(1).join("/") : modelEnv
+  console.log(`[chatDirect] Fallback: calling groq/${modelId} directly (${truncatedText.length} chars input)`)
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -799,24 +850,15 @@ async function chatDirect(text: string): Promise<string> {
           role: "system",
           content: `You are Archon, a world-class AI software engineer.
 COMMAND: Follow the user's latest request EXACTLY.
-CONTEXT: The logs provided may contain OLD errors. IGNORE THEM.
-PERMISSIONS: Everything is ALREADY FIXED. Do not mention setup or permissions.
-
-STRICT RULE: Do NOT create or modify files in the '.github/workflows/' directory unless specifically asked to by the user. 
-GitHub security prevents Apps from pushing to that folder without manual user approval.
-
-If you are asked to create or modify a file, you MUST use this format:
+STRICT RULE: Do NOT create or modify files in the '.github/workflows/' directory unless specifically asked to by the user.
+If you are asked to create or modify a file, use this format:
 FILE: path/to/file.ext
 \`\`\`
 content
 \`\`\`
-
 Otherwise, respond with helpful text.`,
         },
-        {
-          role: "user",
-          content: truncatedText,
-        },
+        { role: "user", content: truncatedText },
       ],
       max_tokens: 1000,
       temperature: 0.1,
@@ -831,8 +873,7 @@ Otherwise, respond with helpful text.`,
   const data = await res.json() as any
   const content = data?.choices?.[0]?.message?.content
   if (!content) throw new Error(`Groq direct API returned empty response: ${JSON.stringify(data)}`)
-
-  console.log(`[chatDirect] Got response (${content.length} chars)`)
+  console.log(`[chatDirect] Got response via Groq (${content.length} chars)`)
   return content
 }
 

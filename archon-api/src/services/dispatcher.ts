@@ -31,6 +31,9 @@ on:
       archon_token:
         description: 'SaaS Token'
         required: false
+      archon_api_url:
+        description: 'Archon API URL (Cloudflare tunnel)'
+        required: false
       groq_api_key:
         description: 'Groq API Key'
         required: false
@@ -61,6 +64,7 @@ jobs:
           ARCHON_SaaS_TOKEN: \${{ github.event.inputs.archon_token }}
           ISSUE_NUMBER: \${{ github.event.inputs.issue_number }}
           COMMENT_ID: \${{ github.event.inputs.comment_id }}
+          ARCHON_API_URL: \${{ github.event.inputs.archon_api_url }}
           GROQ_API_KEY: \${{ github.event.inputs.groq_api_key }}
           ANTHROPIC_API_KEY: \${{ github.event.inputs.anthropic_api_key }}
           OPENAI_API_KEY: \${{ github.event.inputs.openai_api_key }}
@@ -138,6 +142,7 @@ jobs:
         issue_number: (issue_number ?? '').toString(),
         comment_id: (comment_id ?? '').toString(),
         model: model,
+        archon_api_url: process.env.ARCHON_API_URL || '',
         groq_api_key: process.env.GROQ_API_KEY || '',
         anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
         openai_api_key: process.env.OPENAI_API_KEY || '',
