@@ -183,13 +183,20 @@ try {
   // 1. Issue
   // 2. Local PR
   // 3. Fork PR
+
+  // For workflow_dispatch (SaaS-triggered), use direct LLM API to avoid
+  // archon server's ~13k token system prompt overwhelming Groq free tier limits.
+  const useDirectApi = useContext().eventName === "workflow_dispatch"
+
   if (isPullRequest()) {
     const prData = await fetchPR()
     // Local PR
     if (prData.headRepository.nameWithOwner === prData.baseRepository.nameWithOwner) {
       await checkoutLocalBranch(prData)
       const dataPrompt = buildPromptDataForPR(prData)
-      const response = await chat(`${userPrompt}\n\n${dataPrompt}`, promptFiles)
+      const response = useDirectApi
+        ? await chatDirect(`${userPrompt}\n\n${dataPrompt}`)
+        : await chat(`${userPrompt}\n\n${dataPrompt}`, promptFiles)
       if (await branchIsDirty()) {
         const summary = await summarize(response)
         await pushToLocalBranch(summary)
@@ -201,7 +208,9 @@ try {
     else {
       await checkoutForkBranch(prData)
       const dataPrompt = buildPromptDataForPR(prData)
-      const response = await chat(`${userPrompt}\n\n${dataPrompt}`, promptFiles)
+      const response = useDirectApi
+        ? await chatDirect(`${userPrompt}\n\n${dataPrompt}`)
+        : await chat(`${userPrompt}\n\n${dataPrompt}`, promptFiles)
       if (await branchIsDirty()) {
         const summary = await summarize(response)
         await pushToForkBranch(summary, prData)
@@ -215,7 +224,9 @@ try {
     const branch = await checkoutNewBranch()
     const issueData = await fetchIssue()
     const dataPrompt = buildPromptDataForIssue(issueData)
-    const response = await chat(`${userPrompt}\n\n${dataPrompt}`, promptFiles)
+    const response = useDirectApi
+      ? await chatDirect(`${userPrompt}\n\n${dataPrompt}`)
+      : await chat(`${userPrompt}\n\n${dataPrompt}`, promptFiles)
     if (await branchIsDirty()) {
       const summary = await summarize(response)
       await pushToNewBranch(summary, branch)
@@ -721,6 +732,61 @@ async function chat(text: string, files: PromptFiles = []) {
   }
 
   return match.text
+}
+
+// Direct Groq API call — bypasses archon server entirely for workflow_dispatch events.
+// The archon server's system prompt + tool definitions cost ~13,000–14,000 tokens,
+// which exceeds every Groq free tier model's TPM limit. Direct call uses ~1,500 tokens total.
+async function chatDirect(text: string): Promise<string> {
+  const groqKey = process.env.GROQ_API_KEY
+  if (!groqKey) throw new Error("GROQ_API_KEY env var not set — cannot call Groq directly")
+
+  const modelEnv = process.env.MODEL || "groq/llama-3.1-8b-instant"
+  // Strip provider prefix: "groq/llama-3.1-8b-instant" → "llama-3.1-8b-instant"
+  const modelId = modelEnv.includes("/") ? modelEnv.split("/").slice(1).join("/") : modelEnv
+
+  // Hard cap to keep total tokens low
+  const MAX_CHARS = 3_000
+  const truncatedText = text.length > MAX_CHARS
+    ? text.slice(0, MAX_CHARS) + "\n\n[... context truncated to fit token limits]"
+    : text
+
+  console.log(`[chatDirect] Calling groq/${modelId} directly (${truncatedText.length} chars input)`)
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${groqKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: modelId,
+      messages: [
+        {
+          role: "system",
+          content: "You are Archon, a helpful AI software engineer. Analyze GitHub issues and provide concise, actionable responses. Be specific and practical.",
+        },
+        {
+          role: "user",
+          content: truncatedText,
+        },
+      ],
+      max_tokens: 500,
+      temperature: 0.7,
+    }),
+  })
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({})) as any
+    throw new Error(`Groq direct API error ${res.status}: ${errBody?.error?.message || res.statusText}`)
+  }
+
+  const data = await res.json() as any
+  const content = data?.choices?.[0]?.message?.content
+  if (!content) throw new Error(`Groq direct API returned empty response: ${JSON.stringify(data)}`)
+
+  console.log(`[chatDirect] Got response (${content.length} chars)`)
+  return content
 }
 
 async function configureGit(appToken: string) {
