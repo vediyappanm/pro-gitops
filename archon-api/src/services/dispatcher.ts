@@ -9,7 +9,7 @@ export async function dispatchAgent(installationId: number, payload: any, plan: 
   const issue_number = payload.issue ? payload.issue.number : payload.pull_request?.number
   const comment_id = payload.comment?.id
 
-  const model = plan.tier === 'pro' ? 'anthropic/claude-3-5-sonnet-20241022' : 'groq/llama-3.3-70b-versatile'
+  const model = plan.tier === 'pro' ? 'groq/llama-3.3-70b-versatile' : 'groq/llama-3.3-70b-versatile'
   const workflowPath = '.github/workflows/archon-managed.yml'
 
   // The workflow content injected into the target repo.
