@@ -1064,22 +1064,18 @@ function buildPromptDataForIssue(issue: GitHubIssue) {
     ? null
     : (context.payload as IssueCommentEvent).comment?.id
 
-  const cleanBody = (text: string) => (text || "")
-    .replace(/permissions|workflows|failed|permission|workflow/gi, "TOKEN_REDACTED")
-    .replace(/Archon App is missing/gi, "[OLD]")
-    .slice(0, 2000)
+  const triggerComment = issue.comments.nodes.find(c => c.databaseId === triggerCommentId)
+  const lastPrompt = triggerComment?.body || issue.body
 
-  // Only take the last 3 comments to prevent old history from confusing the AI
-  const recentComments = issue.comments.nodes
-    .filter((c) => c.databaseId !== triggerCommentId)
-    .slice(-3)
+  // ATOMIC CONTEXT: If this is a command run, do NOT send any history or older logs.
+  // This prevents the AI from 'hallucinating' about old errors or redacted words.
+  if (lastPrompt.trim().startsWith("/archon")) {
+    return `TASK: ${lastPrompt}\n\nStrictly follow the file output rules. Ignore all past logs or errors.`
+  }
 
   const promptData = [
-    `Issue #${issue.number}: ${issue.title}`,
-    `Original Description: ${cleanBody(issue.body)}`,
-    ...recentComments
-      .map((c) => `Recent Comment by ${c.author.login}: ${cleanBody(c.body)}`),
-    `IMPORTANT: The user has just run a command. Focus ONLY on the latest command and ignore past redacted errors.`
+    `Issue: ${issue.title}`,
+    `Body: ${lastPrompt.slice(0, 2000)}`,
   ].join("\n\n")
 
   return promptData
