@@ -9,15 +9,15 @@ export interface ModelConfig {
 const MODEL_TIERS: Record<string, ModelConfig> = {
     free: {
         provider: "opencode",
-        modelId: "claude-3-5-sonnet-20241022",
+        modelId: "trinity-large-preview-free",
         apiKey: "",
         maxTokens: 8192,
         tpmLimit: 100000,
     },
     pro: {
-        provider: "anthropic",
-        modelId: "claude-3-5-sonnet-20241022",
-        apiKey: process.env.ANTHROPIC_API_KEY || "",
+        provider: "opencode",
+        modelId: "trinity-large-preview-free",
+        apiKey: "",
         maxTokens: 8192,
         tpmLimit: 100000,
     },

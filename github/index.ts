@@ -19,10 +19,11 @@ if (!process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX) {
 }
 
 // Reduce tool/system prompt overhead for constrained models if requested
-if (process.env.OPENCODE_DISABLE_EXTERNAL_SKILLS === undefined && process.env.ENABLE_TOOLS !== "true") {
+const toolsDisabled = process.env.ENABLE_TOOLS === "false" || process.env.ENABLE_TOOLS === "0"
+if (process.env.OPENCODE_DISABLE_EXTERNAL_SKILLS === undefined && toolsDisabled) {
   process.env.OPENCODE_DISABLE_EXTERNAL_SKILLS = "true"
 }
-if (process.env.OPENCODE_DISABLE_DEFAULT_PLUGINS === undefined && process.env.ENABLE_TOOLS !== "true") {
+if (process.env.OPENCODE_DISABLE_DEFAULT_PLUGINS === undefined && toolsDisabled) {
   process.env.OPENCODE_DISABLE_DEFAULT_PLUGINS = "true"
 }
 
@@ -141,9 +142,11 @@ let octoRest: Octokit
 let octoGraph: typeof graphql
 let commentId: number
 let gitConfig: string
-let session: { id: string; title: string; version: string }
+let session: { id: string; title: string; version: string; status?: string }
 let shareId: string | undefined
 let exitCode = 0
+let lastTextResponse = ""
+let sessionCompleted = false
 type PromptFiles = Awaited<ReturnType<typeof getUserPrompt>>["promptFiles"]
 
 try {
@@ -191,7 +194,7 @@ try {
   // For workflow_dispatch (SaaS-triggered), we might use direct LLM API to avoid
   // archon server's ~13k token system prompt overwhelming Groq free tier limits.
   // If tools are explicitly enabled or the user isn't on a constrained model, we use the agentic path.
-  const useDirectApi = useContext().eventName === "workflow_dispatch" && process.env.ENABLE_TOOLS !== "true"
+  const useDirectApi = useContext().eventName === "workflow_dispatch" && toolsDisabled
 
   if (isPr) {
     const prData = issueOrPrData as GitHubPullRequest
@@ -643,7 +646,7 @@ async function subscribeSessionEvents() {
                 if (part.type === "tool" && part.state.status === "completed") {
                   const [tool, color] = TOOL[part.tool] ?? [part.tool, "\x1b[34m\x1b[1m"]
                   const title =
-                    part.state.title || Object.keys(part.state.input).length > 0
+                    part.state.title || (part.state.input && Object.keys(part.state.input).length > 0)
                       ? JSON.stringify(part.state.input)
                       : "Unknown"
                   console.log()
@@ -651,13 +654,12 @@ async function subscribeSessionEvents() {
                 }
 
                 if (part.type === "text") {
-                  text = part.text
+                  lastTextResponse = part.text
 
                   if (part.time?.end) {
                     console.log()
-                    console.log(text)
+                    console.log(part.text)
                     console.log()
-                    text = ""
                   }
                 }
               }
@@ -665,6 +667,9 @@ async function subscribeSessionEvents() {
               if (evt.type === "session.updated") {
                 if (evt.properties.info.id !== session.id) continue
                 session = evt.properties.info
+                if (session.status === "completed" || session.status === "error") {
+                  sessionCompleted = true
+                }
               }
             } catch (e) {
               // Ignore parse errors
@@ -730,7 +735,7 @@ async function chat(text: string, files: PromptFiles = []) {
     text = text.slice(0, MAX_PROMPT_CHARS) + "\n\n[context truncated due to length]"
   }
 
-  const chat = await client.session.prompt<true>({
+  const chatData = await client.session.prompt<true>({
     path: { id: session.id },
     body: {
       model: { providerID, modelID },
@@ -761,15 +766,38 @@ async function chat(text: string, files: PromptFiles = []) {
     },
   })
 
-  // @ts-ignore - handle both old (chat.data.info.error) and new (chat.data.error) SDK response shapes
-  const responseData = chat.data as any
+  // @ts-ignore
+  const responseData = chatData.data as any
   const error = responseData?.info?.error || responseData?.error
   if (error) {
     const errorMsg = error.data?.message || error.message || error.name || JSON.stringify(error)
     throw new Error(`Archon AI Error: ${errorMsg}`)
   }
 
-  // @ts-ignore - handle both old (chat.data.parts) and new response shapes
+  // If we are using a remote server (ARCHON_API_URL set), the above call returned 
+  // immediately due to SSE. We need to wait for sessionCompleted via the event stream.
+  const isRemote = Boolean(process.env["ARCHON_API_URL"])
+  if (isRemote) {
+    console.log("Waiting for remote Archon to complete...")
+    const start = Date.now()
+    const TIMEOUT = 10 * 60 * 1000 // 10 minutes
+    while (!sessionCompleted && (Date.now() - start < TIMEOUT)) {
+      await new Promise(r => setTimeout(r, 1000))
+      // Check status via polling if events are slow
+      const poll = await client.session.get<true>({ path: { id: session.id } }).catch(() => null)
+      if (poll?.data?.status === "completed" || poll?.data?.status === "error") {
+        sessionCompleted = true
+        // @ts-ignore
+        const lastPart = poll.data.parts?.findLast((p: any) => p.type === 'text')
+        if (lastPart) lastTextResponse = lastPart.text
+      }
+    }
+
+    if (!sessionCompleted) throw new Error("Remote Archon timed out after 10 minutes")
+    return lastTextResponse
+  }
+
+  // Local case logic
   const parts: any[] = responseData?.parts || responseData?.info?.parts || []
   console.log(`Response has ${parts.length} parts`)
   const match = parts.findLast((p: any) => p.type === "text")
@@ -778,7 +806,7 @@ async function chat(text: string, files: PromptFiles = []) {
     throw new Error(`Failed to parse the text response: no text part found`)
   }
 
-  return match.text
+  return match.text as string
 }
 
 // chatDirect — calls Groq directly for fast, free AI responses.

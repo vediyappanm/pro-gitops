@@ -3,7 +3,7 @@ export * from "./gen/types.gen.js"
 import { createClient } from "./gen/client/client.gen.js"
 import { type Config } from "./gen/client/types.gen.js"
 import { OpencodeClient as ArchonClient } from "./gen/sdk.gen.js"
-export { type Config as ArchonClientConfig, ArchonClient }
+export { type Config as ArchonClientConfig, ArchonClient, ArchonClient as OpencodeClient }
 
 export function createArchonClient(config?: Config & { directory?: string }) {
   if (!config?.fetch) {
@@ -30,3 +30,6 @@ export function createArchonClient(config?: Config & { directory?: string }) {
   const client = createClient(config)
   return new ArchonClient({ client })
 }
+
+export const createOpencodeClient = createArchonClient
+

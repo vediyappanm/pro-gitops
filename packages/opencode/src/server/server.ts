@@ -194,7 +194,11 @@ export namespace Server {
         )
         .use(async (c, next) => {
           if (c.req.path === "/log") return next()
-          const raw = c.req.query("directory") || c.req.header("x-opencode-directory") || process.cwd()
+          const raw =
+            c.req.query("directory") ||
+            c.req.header("x-archon-directory") ||
+            c.req.header("x-opencode-directory") ||
+            process.cwd()
           const directory = (() => {
             try {
               return decodeURIComponent(raw)
@@ -215,9 +219,9 @@ export namespace Server {
           openAPIRouteHandler(app, {
             documentation: {
               info: {
-                title: "opencode",
+                title: "archon",
                 version: "0.0.3",
-                description: "opencode api",
+                description: "archon api",
               },
               openapi: "3.1.1",
             },
@@ -543,18 +547,23 @@ export namespace Server {
         .all("/*", async (c) => {
           const path = c.req.path
 
-          const response = await proxy(`https://app.opencode.ai${path}`, {
-            ...c.req,
-            headers: {
-              ...c.req.raw.headers,
-              host: "app.opencode.ai",
-            },
-          })
-          response.headers.set(
-            "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data: https://opencode.ai",
-          )
-          return response
+          try {
+            const response = await proxy(`https://app.opencode.ai${path}`, {
+              ...c.req,
+              headers: {
+                ...c.req.raw.headers,
+                host: "app.opencode.ai",
+              },
+            })
+            response.headers.set(
+              "Content-Security-Policy",
+              "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data: https://opencode.ai",
+            )
+            return response
+          } catch (err) {
+            log.warn("proxy failed", { path, error: err })
+            return c.json({ error: "Not Found" }, 404)
+          }
         }) as unknown as Hono,
   )
 
@@ -563,9 +572,9 @@ export namespace Server {
     const result = await generateSpecs(App() as Hono, {
       documentation: {
         info: {
-          title: "opencode",
+          title: "archon",
           version: "1.0.0",
-          description: "opencode api",
+          description: "archon api",
         },
         openapi: "3.1.1",
       },

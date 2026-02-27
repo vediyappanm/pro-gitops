@@ -3,7 +3,7 @@
 
 bun run dev:web
 bun run --cwd packages/app build
-bun run --cwd packages/desktop tauri build
+bun run --cwd packages/opencode src/index.ts web --port 4096
 
 git config http.postBuffer 524288000; git config http.version HTTP/1.1; git push -u origin main
 

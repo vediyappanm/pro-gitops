@@ -1,6 +1,6 @@
 import type {
   Config,
-  OpencodeClient,
+  ArchonClient as OpencodeClient,
   Path,
   PermissionRequest,
   Project,
