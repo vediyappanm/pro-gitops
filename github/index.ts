@@ -745,9 +745,8 @@ async function subscribeSessionEvents() {
               if (evt.type === "session.updated") {
                 if (evt.properties.info.id !== session.id) continue
                 session = evt.properties.info
-                if (session.status === "completed" || session.status === "error") {
-                  sessionCompleted = true
-                }
+                // Note: session.status is "idle", "busy", "retry" - NOT "completed"
+                // Completion is signaled when we get text response via polling or event stream
               }
             } catch (e) {
               // Ignore parse errors
@@ -908,26 +907,33 @@ async function chat(text: string, files: PromptFiles = []) {
         }
       } else {
         noDataCount = 0 // Reset counter on successful API response
-        // Try multiple paths for status (API response structure may vary)
-        const status = poll.data.status ?? poll.data?.info?.status ?? "unknown"
-        const parts = poll.data.parts ?? poll.data?.info?.parts ?? []
+        // Get the message from the session's messages
+        const messages = poll.data.messages ?? poll.data?.info?.messages ?? []
         const elapsed = Date.now() - start
 
-        if (status === "completed" || status === "error") {
-          console.log(`[Poll #${pollAttempts}] Session ${status} after ${elapsed}ms (${parts.length} parts)`)
-          sessionCompleted = true
-          // @ts-ignore
-          const lastPart = parts?.findLast((p: any) => p.type === 'text')
-          if (lastPart) lastTextResponse = lastPart.text
-          break
-        } else {
-          // Status is running/pending/unknown - that's normal, keep polling
-          if (pollAttempts === 1) {
-            console.log(`[Poll #${pollAttempts}] Session polling started, status=${status}, parts=${parts.length}`)
-          } else if (pollAttempts % 5 === 0) {
-            // Log progress every 5 polls (~10 seconds at backoff rate)
-            console.log(`[Poll #${pollAttempts}] Still waiting... status=${status}, parts=${parts.length}, elapsed=${elapsed}ms`)
+        // Find the latest assistant message
+        const lastMessage = messages.findLast((m: any) => m.role === "assistant")
+        if (lastMessage) {
+          const parts = lastMessage.parts ?? []
+          const textPart = parts.find((p: any) => p.type === "text")
+
+          // Message is complete if we have parts (indicating processing finished)
+          if (parts.length > 0) {
+            if (textPart?.text) {
+              lastTextResponse = textPart.text
+            }
+            console.log(`[Poll #${pollAttempts}] Message received with ${parts.length} parts after ${elapsed}ms`)
+            sessionCompleted = true
+            break
           }
+        }
+
+        // No message yet - keep polling
+        if (pollAttempts === 1) {
+          console.log(`[Poll #${pollAttempts}] Polling started, waiting for message...`)
+        } else if (pollAttempts % 5 === 0) {
+          // Log progress every 5 polls (~10 seconds at backoff rate)
+          console.log(`[Poll #${pollAttempts}] Still waiting for message response... elapsed=${elapsed}ms`)
         }
       }
 
