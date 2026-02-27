@@ -38,6 +38,11 @@ inputs:
     description: "Base URL for OIDC token exchange API. Only required when running a custom GitHub App install."
     required: false
 
+  enable_tools:
+    description: "Enable agentic tools (bash, edit, read, etc.). Default is true."
+    required: false
+    default: "true"
+
 runs:
   using: "composite"
   steps:
@@ -89,3 +94,4 @@ runs:
         MENTIONS: ${{ inputs.mentions }}
         VARIANT: ${{ inputs.variant }}
         OIDC_BASE_URL: ${{ inputs.oidc_base_url }}
+        ENABLE_TOOLS: ${{ inputs.enable_tools }}

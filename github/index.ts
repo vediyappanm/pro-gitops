@@ -18,11 +18,11 @@ if (!process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX) {
   process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = "512"
 }
 
-// Reduce tool/system prompt overhead for constrained models
-if (!process.env.OPENCODE_DISABLE_EXTERNAL_SKILLS) {
+// Reduce tool/system prompt overhead for constrained models if requested
+if (process.env.OPENCODE_DISABLE_EXTERNAL_SKILLS === undefined && process.env.ENABLE_TOOLS !== "true") {
   process.env.OPENCODE_DISABLE_EXTERNAL_SKILLS = "true"
 }
-if (!process.env.OPENCODE_DISABLE_DEFAULT_PLUGINS) {
+if (process.env.OPENCODE_DISABLE_DEFAULT_PLUGINS === undefined && process.env.ENABLE_TOOLS !== "true") {
   process.env.OPENCODE_DISABLE_DEFAULT_PLUGINS = "true"
 }
 
@@ -188,9 +188,10 @@ try {
   // 2. Local PR
   // 3. Fork PR
 
-  // For workflow_dispatch (SaaS-triggered), use direct LLM API to avoid
+  // For workflow_dispatch (SaaS-triggered), we might use direct LLM API to avoid
   // archon server's ~13k token system prompt overwhelming Groq free tier limits.
-  const useDirectApi = useContext().eventName === "workflow_dispatch"
+  // If tools are explicitly enabled or the user isn't on a constrained model, we use the agentic path.
+  const useDirectApi = useContext().eventName === "workflow_dispatch" && process.env.ENABLE_TOOLS !== "true"
 
   if (isPr) {
     const prData = issueOrPrData as GitHubPullRequest
@@ -288,7 +289,10 @@ function createArchon() {
   const host = "127.0.0.1"
   const port = 4096
   const url = `http://${host}:${port}`
-  const proc = spawn(`archon`, [`serve`, `--hostname=${host}`, `--port=${port}`])
+  const proc = spawn(`archon`, [`serve`, `--hostname=${host}`, `--port=${port}`], {
+    shell: process.platform === "win32",
+    stdio: ["ignore", "inherit", "inherit"],
+  })
   const client = createArchonClient({ baseUrl: url })
 
   return {
