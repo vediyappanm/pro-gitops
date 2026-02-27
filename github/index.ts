@@ -286,6 +286,20 @@ try {
 process.exit(exitCode)
 
 function createArchon() {
+  const archonApiUrl = process.env.ARCHON_API_URL?.trim()
+
+  // If ARCHON_API_URL is set, use the remote opencode server (user's local machine via tunnel)
+  // This means all AI work (tools, file reads, code writes) happen on the user's machine for FREE
+  if (archonApiUrl) {
+    console.log(`[Archon] Using remote opencode server at ${archonApiUrl}`)
+    const client = createArchonClient({ baseUrl: archonApiUrl })
+    return {
+      server: { url: archonApiUrl, close: () => { } }, // no local process to kill
+      client,
+    }
+  }
+
+  // Default: spawn a local opencode server on the GitHub Action runner
   const host = "127.0.0.1"
   const port = 4096
   const url = `http://${host}:${port}`

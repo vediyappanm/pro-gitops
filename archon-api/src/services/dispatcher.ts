@@ -9,7 +9,8 @@ export async function dispatchAgent(installationId: number, payload: any, plan: 
   const issue_number = payload.issue ? payload.issue.number : payload.pull_request?.number
   const comment_id = payload.comment?.id
 
-  const model = plan.tier === 'pro' ? 'groq/llama-3.3-70b-versatile' : 'groq/llama-3.1-8b-instant'
+  // Use the free local model — routes through ARCHON_API_URL tunnel to user's machine
+  const model = plan.tier === 'pro' ? 'opencode/trinity-large-preview-free' : 'opencode/trinity-large-preview-free'
   const workflowPath = '.github/workflows/archon-managed.yml'
 
   // The workflow content injected into the target repo.
@@ -144,7 +145,7 @@ jobs:
         comment_id: (comment_id ?? '').toString(),
         model: model,
         archon_api_url: (process.env.ARCHON_API_URL || '').trim(),
-        enable_tools: 'false',
+        enable_tools: 'true',
         groq_api_key: process.env.GROQ_API_KEY || '',
         openai_api_key: process.env.OPENAI_API_KEY || '',
         archon_token: Buffer.from(JSON.stringify({ orgId: owner.id })).toString('base64')
