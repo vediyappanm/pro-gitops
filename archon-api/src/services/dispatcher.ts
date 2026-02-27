@@ -9,7 +9,7 @@ export async function dispatchAgent(installationId: number, payload: any, plan: 
   const issue_number = payload.issue ? payload.issue.number : payload.pull_request?.number
   const comment_id = payload.comment?.id
 
-  const model = plan.tier === 'pro' ? 'anthropic/claude-3-5-sonnet-20241022' : 'opencode/claude-3-5-sonnet-20241022'
+  const model = plan.tier === 'pro' ? 'groq/llama-3.3-70b-versatile' : 'groq/llama-3.1-8b-instant'
   const workflowPath = '.github/workflows/archon-managed.yml'
 
   // The workflow content injected into the target repo.
@@ -34,11 +34,12 @@ on:
       archon_api_url:
         description: 'Archon API URL (Cloudflare tunnel)'
         required: false
+      enable_tools:
+        description: 'Enable agentic tools'
+        required: false
+        default: 'false'
       groq_api_key:
         description: 'Groq API Key'
-        required: false
-      anthropic_api_key:
-        description: 'Anthropic API Key'
         required: false
       openai_api_key:
         description: 'OpenAI API Key'
@@ -66,10 +67,10 @@ jobs:
           COMMENT_ID: \${{ github.event.inputs.comment_id }}
           ARCHON_API_URL: \${{ github.event.inputs.archon_api_url }}
           GROQ_API_KEY: \${{ github.event.inputs.groq_api_key }}
-          ANTHROPIC_API_KEY: \${{ github.event.inputs.anthropic_api_key }}
           OPENAI_API_KEY: \${{ github.event.inputs.openai_api_key }}
         with:
           model: \${{ github.event.inputs.model }}
+          enable_tools: \${{ github.event.inputs.enable_tools }}
 
       - name: Self Cleanup
         if: always()
@@ -143,8 +144,8 @@ jobs:
         comment_id: (comment_id ?? '').toString(),
         model: model,
         archon_api_url: process.env.ARCHON_API_URL || '',
+        enable_tools: 'false',
         groq_api_key: process.env.GROQ_API_KEY || '',
-        anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
         openai_api_key: process.env.OPENAI_API_KEY || '',
         archon_token: Buffer.from(JSON.stringify({ orgId: owner.id })).toString('base64')
       }

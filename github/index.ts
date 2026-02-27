@@ -668,7 +668,7 @@ async function subscribeSessionEvents() {
 
 async function summarize(response: string) {
   try {
-    return await chat(`Summarize the following in less than 40 characters:\n\n${response}`)
+    return await chatDirect(`Summarize the following in less than 40 characters:\n\n${response}`)
   } catch (e) {
     if (isScheduleEvent() || useContext().eventName === "workflow_dispatch") {
       return "Scheduled/Dispatch task changes"
