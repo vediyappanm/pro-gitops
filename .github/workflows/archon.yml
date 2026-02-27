@@ -16,21 +16,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: write        # ✅ needs write to push commits
+      pull-requests: write   # ✅ needs write to create PRs
+      issues: write          # ✅ needs write to add comments
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
 
       - name: Run archon
-        uses: ./github
+        uses: vediyappanm/pro-gitops/github@main
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         with:
-          model: openrouter/deepseek/deepseek-v3-base:free
+          model: groq/deepseek-r1-distill-llama-70b
           use_github_token: "true"

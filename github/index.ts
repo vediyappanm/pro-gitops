@@ -147,7 +147,7 @@ let exitCode = 0
 type PromptFiles = Awaited<ReturnType<typeof getUserPrompt>>["promptFiles"]
 
 try {
-  assertContextEvent("issue_comment", "pull_request_review_comment")
+  assertContextEvent("issue_comment", "pull_request_review_comment", "workflow_dispatch")
   assertPayloadKeyword()
   await assertArchonConnected()
 
@@ -264,7 +264,14 @@ function createArchon() {
 }
 
 function assertPayloadKeyword() {
-  const payload = useContext().payload as IssueCommentEvent | PullRequestReviewCommentEvent
+  const context = useContext()
+
+  if (context.eventName === "workflow_dispatch") {
+    // Workflow dispatch is triggered programmatically with valid keywords already
+    return
+  }
+
+  const payload = context.payload as IssueCommentEvent | PullRequestReviewCommentEvent
   const body = payload.comment.body.trim()
   if (!body.match(/(?:^|\s)(?:\/archon|\/ac|\/opencode|\/oc)(?=$|\s)/)) {
     throw new Error("Comments must mention `/archon`, `/ac`, `/opencode`, or `/oc`")
@@ -371,6 +378,11 @@ function isMock() {
 
 function isPullRequest() {
   const context = useContext()
+  if (context.eventName === "workflow_dispatch") {
+    // The workflow_dispatch event doesn't tell us easily if it's PR or Issue. We need to fetch from API.
+    // For now, we assume Issue or use an env variable. 
+    return process.env.IS_PR === "true"
+  }
   const payload = context.payload as IssueCommentEvent
   return Boolean(payload.issue.pull_request)
 }
@@ -380,7 +392,13 @@ function useContext() {
 }
 
 function useIssueId() {
-  const payload = useContext().payload as IssueCommentEvent
+  const context = useContext()
+  if (context.eventName === "workflow_dispatch") {
+    // Read from env injected in our workflow file
+    const issueNum = process.env.ISSUE_NUMBER
+    if (issueNum) return parseInt(issueNum)
+  }
+  const payload = context.payload as IssueCommentEvent
   return payload.issue.number
 }
 
@@ -440,6 +458,10 @@ async function getUserPrompt() {
   const body = payload.comment.body.trim()
 
   let prompt = (() => {
+    if (context.eventName === "workflow_dispatch") {
+      return "/archon"
+    }
+
     if (body === "/archon" || body === "/ac" || body === "/opencode" || body === "/oc") {
       if (reviewContext) {
         return `Review this code change and suggest improvements for the commented lines:\n\nFile: ${reviewContext.file}\nLines: ${reviewContext.line}\n\n${reviewContext.diffHunk}`
@@ -602,8 +624,8 @@ async function summarize(response: string) {
   try {
     return await chat(`Summarize the following in less than 40 characters:\n\n${response}`)
   } catch (e) {
-    if (isScheduleEvent()) {
-      return "Scheduled task changes"
+    if (isScheduleEvent() || useContext().eventName === "workflow_dispatch") {
+      return "Scheduled/Dispatch task changes"
     }
     const payload = useContext().payload as IssueCommentEvent
     return `Fix issue: ${payload.issue.title}`
