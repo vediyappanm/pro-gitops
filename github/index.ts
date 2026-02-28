@@ -1348,10 +1348,13 @@ function buildPromptDataForIssue(issue: GitHubIssue) {
   const triggerComment = issue.comments.nodes.find(c => String(c.databaseId) === String(commentId))
   const lastPrompt = triggerComment?.body || issue.body
 
-  // ATOMIC CONTEXT: If this is a command run, do NOT send any history or older logs.
-  // This prevents the AI from 'hallucinating' about old errors or redacted words.
+  const context = [
+    `Issue: ${issue.title}`,
+    `Body: ${issue.body.slice(0, 2000)}`,
+  ].join("\n\n")
+
   if (lastPrompt.trim().startsWith("/archon")) {
-    return `TASK: ${lastPrompt}\n\nStrictly follow the file output rules. Ignore all past logs or errors.`
+    return `${context}\n\nTASK: ${lastPrompt}\n\nStrictly follow the file output rules. Ignore all past logs or errors.`
   }
 
   const promptData = [
