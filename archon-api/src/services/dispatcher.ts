@@ -46,6 +46,9 @@ on:
       anthropic_api_key:
         description: 'Anthropic API Key'
         required: false
+      huggingface_api_key:
+        description: 'Hugging Face API Key'
+        required: false
 
 jobs:
   archon:
@@ -71,6 +74,7 @@ jobs:
           GROQ_API_KEY: \${{ github.event.inputs.groq_api_key }}
           OPENAI_API_KEY: \${{ github.event.inputs.openai_api_key }}
           ANTHROPIC_API_KEY: \${{ github.event.inputs.anthropic_api_key }}
+          HUGGINGFACE_API_KEY: \${{ github.event.inputs.huggingface_api_key }}
         with:
           model: \${{ github.event.inputs.model }}
           enable_tools: \${{ github.event.inputs.enable_tools }}
@@ -151,6 +155,7 @@ jobs:
         groq_api_key: process.env.GROQ_API_KEY || '',
         openai_api_key: process.env.OPENAI_API_KEY || '',
         anthropic_api_key: process.env.ANTHROPIC_API_KEY || '',
+        huggingface_api_key: process.env.HUGGINGFACE_API_KEY || '',
         archon_token: Buffer.from(JSON.stringify({ orgId: owner.id })).toString('base64')
       }
     })

@@ -970,6 +970,7 @@ async function chat(text: string, files: PromptFiles = []) {
 async function chatDirect(text: string): Promise<string> {
   const anthropicKey = process.env.ANTHROPIC_API_KEY
   const groqKey = process.env.GROQ_API_KEY
+  const hfKey = process.env.HUGGINGFACE_API_KEY
 
   if (!anthropicKey && !groqKey) {
     throw new Error("Neither ANTHROPIC_API_KEY nor GROQ_API_KEY is set — cannot call AI directly")
@@ -1000,6 +1001,45 @@ RULES:
 - NEVER modify files in '.github/workflows/' unless explicitly asked
 - Keep responses focused and professional
 - Use markdown formatting for readability`
+
+  // 1. Try Hugging Face if key is available (User requested)
+  if (hfKey) {
+    const modelId = "Qwen/Qwen2.5-Coder-32B-Instruct"
+    console.log(`[chatDirect] Calling Hugging Face/${modelId} (${truncatedText.length} chars input)`)
+    try {
+      // Note: Using the router endpoint as per HF current requirements
+      const res = await fetch(`https://router.huggingface.co/models/${modelId}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${hfKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: truncatedText },
+          ],
+          max_tokens: 2000,
+          temperature: 0.2,
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json() as any
+        const content = data?.choices?.[0]?.message?.content
+        if (content) {
+          console.log(`[chatDirect] Got response via Hugging Face (${content.length} chars)`)
+          return content
+        }
+      } else {
+        const err = await res.text()
+        console.warn(`[chatDirect] Hugging Face call failed: ${res.status} - ${err}`)
+      }
+    } catch (e) {
+      console.warn(`[chatDirect] Hugging Face error: ${e}`)
+    }
+  }
 
   // 1. Prefer Anthropic Claude if key is available
   if (anthropicKey) {

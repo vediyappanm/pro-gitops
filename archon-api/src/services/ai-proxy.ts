@@ -15,9 +15,9 @@ const MODEL_TIERS: Record<string, ModelConfig> = {
         tpmLimit: 100000,
     },
     pro: {
-        provider: "groq",
-        modelId: "llama-3.3-70b-versatile",
-        apiKey: process.env.GROQ_API_KEY || "",
+        provider: "huggingface",
+        modelId: "Qwen/Qwen2.5-Coder-32B-Instruct",
+        apiKey: process.env.HUGGINGFACE_API_KEY || "",
         maxTokens: 8192,
         tpmLimit: 100000,
     },
