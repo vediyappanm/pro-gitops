@@ -348,7 +348,7 @@ function createArchon() {
   const host = "127.0.0.1"
   const port = 4096
   const url = `http://${host}:${port}`
-  const proc = spawn(`archon`, [`serve`, `--hostname=${host}`, `--port=${port}`], {
+  const proc = spawn(`bun`, [`run`, `--cwd`, `packages/opencode`, `src/index.ts`, `serve`, `--hostname=${host}`, `--port=${port}`], {
     shell: process.platform === "win32",
     stdio: ["ignore", "inherit", "inherit"],
   })

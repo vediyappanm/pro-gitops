@@ -547,7 +547,7 @@ export namespace Provider {
       if (!apiToken) {
         throw new Error(
           "CLOUDFLARE_API_TOKEN (or CF_AIG_TOKEN) is required for Cloudflare AI Gateway. " +
-            "Set it via environment variable or run `opencode auth cloudflare-ai-gateway`.",
+          "Set it via environment variable or run `opencode auth cloudflare-ai-gateway`.",
         )
       }
 
@@ -699,13 +699,13 @@ export namespace Provider {
         },
         experimentalOver200K: model.cost?.context_over_200k
           ? {
-              cache: {
-                read: model.cost.context_over_200k.cache_read ?? 0,
-                write: model.cost.context_over_200k.cache_write ?? 0,
-              },
-              input: model.cost.context_over_200k.input,
-              output: model.cost.context_over_200k.output,
-            }
+            cache: {
+              read: model.cost.context_over_200k.cache_read ?? 0,
+              write: model.cost.context_over_200k.cache_write ?? 0,
+            },
+            input: model.cost.context_over_200k.input,
+            output: model.cost.context_over_200k.output,
+          }
           : undefined,
       },
       limit: {
@@ -791,6 +791,49 @@ export namespace Provider {
           ...model,
           providerID: "github-copilot-enterprise",
         })),
+      }
+    }
+
+    // Add Hugging Face provider
+    if (!database["huggingface"]) {
+      database["huggingface"] = {
+        id: "huggingface",
+        source: "custom",
+        name: "Hugging Face",
+        env: ["HUGGINGFACE_API_KEY"],
+        options: {
+          baseURL: "https://api-inference.huggingface.co/v1",
+        },
+        models: {
+          // Add a placeholder model so the provider remains active
+          "Qwen/Qwen2.5-Coder-32B-Instruct": {
+            id: "Qwen/Qwen2.5-Coder-32B-Instruct",
+            providerID: "huggingface",
+            name: "Qwen2.5 Coder 32B Instruct",
+            family: "qwen",
+            api: {
+              id: "Qwen/Qwen2.5-Coder-32B-Instruct",
+              npm: "@ai-sdk/openai-compatible",
+              url: "https://api-inference.huggingface.co/v1",
+            },
+            status: "active",
+            headers: {},
+            options: {},
+            cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+            limit: { context: 32768, output: 8192 },
+            capabilities: {
+              temperature: true,
+              reasoning: false,
+              attachment: false,
+              toolcall: true,
+              input: { text: true, audio: false, image: false, video: false, pdf: false },
+              output: { text: true, audio: false, image: false, video: false, pdf: false },
+              interleaved: false,
+            },
+            release_date: "2024-11-06",
+            variants: {},
+          },
+        },
       }
     }
 
@@ -1159,6 +1202,36 @@ export namespace Provider {
 
     const info = provider.models[modelID]
     if (!info) {
+      if (providerID === "huggingface") {
+        // Dynamically create model info for any Hugging Face model
+        return {
+          id: modelID,
+          providerID: "huggingface",
+          name: modelID,
+          family: "huggingface",
+          api: {
+            id: modelID,
+            npm: "@ai-sdk/openai-compatible",
+            url: "https://api-inference.huggingface.co/v1",
+          },
+          status: "active",
+          headers: {},
+          options: {},
+          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+          limit: { context: 32768, output: 8192 },
+          capabilities: {
+            temperature: true,
+            reasoning: false,
+            attachment: false,
+            toolcall: true,
+            input: { text: true, audio: false, image: false, video: false, pdf: false },
+            output: { text: true, audio: false, image: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          release_date: "",
+          variants: {},
+        }
+      }
       const availableModels = Object.keys(provider.models)
       const matches = fuzzysort.go(modelID, availableModels, { limit: 3, threshold: -10000 })
       const suggestions = matches.map((m) => m.target)
